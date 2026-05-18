@@ -1,0 +1,13 @@
+# Flutter build folders
+**/build/
+**/.dart_tool/
+
+# Node.js dependencies
+**/node_modules/
+
+# Environment config (don’t upload secrets)
+*.env
+
+# macOS and Windows generated files
+.DS_Store
+Thumbs.db
