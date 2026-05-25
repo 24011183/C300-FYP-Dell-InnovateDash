@@ -1,8 +1,23 @@
+const mysql = require("mysql2");
 const express = require("express");
 const fs = require("fs");
 
 const app = express();
 const PORT = 3000;
+const db = mysql.createConnection({
+  host: "localhost",
+  user: "root",
+  password: "Password123!",
+  database: "dell_nfc_system"
+});
+
+db.connect((err) => {
+  if (err) {
+    console.log("Database connection failed");
+  } else {
+    console.log("Connected to MySQL");
+  }
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
