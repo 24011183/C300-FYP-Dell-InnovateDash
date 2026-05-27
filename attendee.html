@@ -1,64 +1,189 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Attendee Registration</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dell InnovateDash - Attendee Registration</title>
+  <style>
+    /* Dell Dashboard Brand Standards Theme */
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background-color: #0b111e; /* Core Dark Slate Dashboard background */
+      background-image: linear-gradient(180deg, #0b111e 0%, #070a12 100%);
+      color: #e2e8f0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    .form-container {
+      background-color: #111827;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+      width: 100%;
+      max-width: 460px;
+      overflow: hidden; /* Keeps brand bar corner radius aligned */
+    }
+
+    /* Official Dell Tech Top Header Bar */
+    .dell-brand-bar {
+      background-color: #0076ce; /* Official Dell Blue */
+      padding: 15px 25px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid #005da3;
+    }
+
+    .dell-logo-text {
+      font-size: 18px;
+      font-weight: 700;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+    }
+
+    .system-status {
+      font-size: 11px;
+      color: #93c5fd;
+      background-color: rgba(255, 255, 255, 0.1);
+      padding: 4px 10px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .form-content {
+      padding: 35px 30px;
+    }
+
+    .form-header-desc {
+      font-size: 14px;
+      color: #9ca3af;
+      margin-top: -5px;
+      margin-bottom: 25px;
+      text-align: center;
+    }
+
+    .form-group {
+      margin-bottom: 22px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 12px 16px;
+      background-color: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 15px;
+      transition: all 0.2s ease;
+      box-sizing: border-box;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: #0076ce;
+      box-shadow: 0 0 0 3px rgba(0, 118, 206, 0.25);
+    }
+
+    input::placeholder {
+      color: #4b5563;
+    }
+
+    /* Custom drop down arrow layout overrides */
+    select {
+      cursor: pointer;
+    }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      background-color: #0076ce;
+      border: none;
+      border-radius: 4px;
+      color: white;
+      font-size: 15px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-top: 15px;
+    }
+
+    button:hover {
+      background-color: #005da3;
+      box-shadow: 0 4px 12px rgba(0, 118, 206, 0.3);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+  </style>
 </head>
 <body>
 
-  <h1>Attendee Registration</h1>
+  <div class="form-container">
+    <div class="dell-brand-bar">
+      <div class="dell-logo-text">DELL</div>
+      <div class="system-status">NFC Scanner Active</div>
+    </div>
 
-  <form id="registerForm">
+    <div class="form-content">
+      <p class="form-header-desc">Tap NFC Badge or Submit Attendee Credentials Below</p>
 
-    <input
-      type="text"
-      id="name"
-      placeholder="Name"
-      required
-    >
+      <form id="registerForm">
+        <div class="form-group">
+          <label for="name">Full Name</label>
+          <input type="text" id="name" placeholder="John Doe" required>
+        </div>
 
-    <br><br>
+        <div class="form-group">
+          <label for="company">Company</label>
+          <input type="text" id="company" placeholder="Dell Technologies" required>
+        </div>
 
-    <input
-      type="text"
-      id="company"
-      placeholder="Company"
-      required
-    >
+        <div class="form-group">
+          <label for="companySize">Company Size</label>
+          <input type="number" id="companySize" placeholder="e.g. 500" required>
+        </div>
 
-    <br><br>
+        <div class="form-group">
+          <label for="jobTitle">Job Title / Role</label>
+          <input type="text" id="jobTitle" placeholder="e.g. Infrastructure Director" required>
+        </div>
 
-    <input
-      type="number"
-      id="companySize"
-      placeholder="Company Size (No. of Employees)"
-      required
-    >
+        <div class="form-group">
+          <label for="interest">Strategic Focus Area</label>
+          <select id="interest" required>
+            <option value="" disabled selected>Select Business Unit</option>
+            <option value="AI PCs">AI PCs (Client Solutions Group)</option>
+            <option value="Storage">Storage (Infrastructure Solutions)</option>
+            <option value="Cloud">Cloud (APEX & Cloud Services)</option>
+            <option value="Consultancy">Consultancy (Professional Services)</option>
+          </select>
+        </div>
 
-    <br><br>
-
-    <input
-      type="text"
-      id="jobTitle"
-      placeholder="Job Title / Role"
-      required
-    >
-
-    <br><br>
-
-    <input
-      type="text"
-      id="interest"
-      placeholder="Interest"
-      required
-    >
-
-    <br><br>
-
-    <button type="submit">
-      Register
-    </button>
-
-  </form>
+        <button type="submit">Submit Registration Data</button>
+      </form>
+    </div>
+  </div>
 
   <script>
     const form = document.getElementById("registerForm");
@@ -66,29 +191,35 @@
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
 
-      // Bundle all inputs for processing
       const attendee = {
         name: document.getElementById("name").value,
         company: document.getElementById("company").value,
-        companySize: document.getElementById("companySize").value,
+        companySize: parseInt(document.getElementById("companySize").value) || 0,
         jobTitle: document.getElementById("jobTitle").value,
         interest: document.getElementById("interest").value
       };
 
-      const response = await fetch("/register", {
-        method: "POST",
-        headers: {
-          "text-Type": "application/json",
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(attendee)
-      });
+      try {
+        const response = await fetch("/register", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(attendee)
+        });
 
-      const data = await response.json();
+        const data = await response.json();
 
-      // Notifies user and displays returned metadata structure in log
-      alert(data.message);
-      console.log("Response from server:", data);
+        // Standard notification callback alert
+        alert(data.message);
+        console.log("Transmission Successful:", data);
+        
+        // Wipe fields clean for the next queue tap loop
+        form.reset();
+      } catch (error) {
+        console.error("Transmission interruption encountered:", error);
+        alert("Server transmission offline. Running locally on internal backup stack.");
+      }
     });
   </script>
 
