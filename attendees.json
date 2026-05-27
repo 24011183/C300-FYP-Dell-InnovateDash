@@ -19,5 +19,20 @@
     "priority_color": "#e63946",
     "action_recommendation": "Schedule 1-on-1 discovery call for AI PCs within 24 hours. Send Enterprise Catalog.",
     "processed_at": "27/05/2026, 11:59:20 am"
+  },
+  {
+    "id": "USR1779856301944",
+    "name": "Shaun",
+    "company": "Amazon",
+    "companySize": 100,
+    "jobTitle": "IT Director",
+    "interest": "Cloud",
+    "lead_score": 70,
+    "tier": "warm",
+    "assigned_team": "APEX & Cloud Services",
+    "priority_level": "Warm Lead",
+    "priority_color": "#f4a261",
+    "action_recommendation": "Invite to upcoming Dell Cloud tech webinar and track email open rate.",
+    "processed_at": "27/05/2026, 12:31:41 pm"
   }
 ]

@@ -136,8 +136,8 @@ app.post("/register", (req, res) => {
 
 // Endpoint for your Member 4 Dashboard to fetch up-to-date lead metrics
 app.get("/api/leads", (req, res) => {
-  const attendees = getAttendees(); // Reads your current attendees.json file
-  res.json(attendees); // Sends the data array straight to your dashboard UI
+  const attendees = getAttendees(); 
+  res.json(attendees); 
 });
 
 app.listen(PORT, () => {

@@ -157,36 +157,33 @@ function renderLeads(leads) {
         return;
     }
 
-    if (container.innerHTML.includes("No leads captured")) {
-        container.innerHTML = "";
-    }
-
+    // Sort leads strictly by computed scoring order (highest to lowest)
     const sortedLeads = leads.sort((a, b) => b.lead_score - a.lead_score);
 
-    sortedLeads.forEach(lead => {
-        const existingCard = document.getElementById(`card-${lead.id}`);
+    // Clear old positioning maps entirely to guarantee accurate stack ranks
+    container.innerHTML = "";
 
-        if (!existingCard) {
-            const cardHtml = `
-            <div class="lead-card ${lead.tier}" id="card-${lead.id}">
-                <div>
-                    <div class="lead-name">${lead.name}</div>
-                    <div class="lead-meta">${lead.jobTitle} &nbsp;·&nbsp; ${lead.company} &nbsp;·&nbsp; ${(parseInt(lead.companySize) || 0).toLocaleString()} employees</div>
-                    <div class="lead-tags">
-                        <span class="tag">📡 ${lead.interest}</span>
-                        <span class="tag team">→ ${lead.assigned_team}</span>
-                    </div>
-                    <div class="recommendation">${lead.action_recommendation}</div>
+    // Iterate sorted collection and append down the layout tree
+    sortedLeads.forEach(lead => {
+        const cardHtml = `
+        <div class="lead-card ${lead.tier}" id="card-${lead.id}">
+            <div>
+                <div class="lead-name">${lead.name}</div>
+                <div class="lead-meta">${lead.jobTitle} &nbsp;·&nbsp; ${lead.company} &nbsp;·&nbsp; ${(parseInt(lead.companySize) || 0).toLocaleString()} employees</div>
+                <div class="lead-tags">
+                    <span class="tag">📡 ${lead.interest}</span>
+                    <span class="tag team">→ ${lead.assigned_team}</span>
                 </div>
-                <div class="score-side">
-                    ${buildScoreRing(lead.lead_score, lead.tier)}
-                    <div class="priority-badge ${lead.tier}">${lead.priority_level}</div>
-                    <div class="processed-time">${lead.processed_at}</div>
-                </div>
-            </div>`;
-            
-            container.insertAdjacentHTML('afterbegin', cardHtml);
-        }
+                <div class="recommendation">${lead.action_recommendation}</div>
+            </div>
+            <div class="score-side">
+                ${buildScoreRing(lead.lead_score, lead.tier)}
+                <div class="priority-badge ${lead.tier}">${lead.priority_level}</div>
+                <div class="processed-time">${lead.processed_at}</div>
+            </div>
+        </div>`;
+        
+        container.insertAdjacentHTML('beforeend', cardHtml);
     });
 }
 
@@ -264,6 +261,7 @@ async function refreshDashboard() {
         const rawData = await response.json();
         const processedLeads = rawData.map(analyzeLead);
         
+        // Safety guard: halt rendering tree if dataset length is stable
         if (processedLeads.length === currentTotalLeadsCount) {
             return; 
         }

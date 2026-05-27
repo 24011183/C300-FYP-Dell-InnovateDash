@@ -1,6 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Attendee Registration</title>
 </head>
 <body>
@@ -66,7 +68,7 @@
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
 
-      // Bundle all inputs for processing
+      // Unified Data Object with all Member 4 evaluation metrics
       const attendee = {
         name: document.getElementById("name").value,
         company: document.getElementById("company").value,
@@ -75,10 +77,10 @@
         interest: document.getElementById("interest").value
       };
 
+      // Network request pipeline sending payload data to server endpoints
       const response = await fetch("/register", {
         method: "POST",
         headers: {
-          "text-Type": "application/json",
           "Content-Type": "application/json"
         },
         body: JSON.stringify(attendee)
