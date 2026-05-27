@@ -1,3 +1,4 @@
+// server.js - alicia
 const mysql = require("mysql2");
 const express = require("express");
 
@@ -22,12 +23,12 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
 
-// Home route
+// Home route - alicia
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/attendee.html");
 });
 
-// Registration route SQL
+// Registration route SQL - alicia
 app.post("/register", (req, res) => {
 
   const token = "USR" + Date.now();
