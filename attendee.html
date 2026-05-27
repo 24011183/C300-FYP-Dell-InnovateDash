@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Attendee Registration</title>
+</head>
+<body>
+
+  <h1>Attendee Registration</h1>
+
+  <form id="registerForm">
+
+    <input
+      type="text"
+      id="name"
+      placeholder="Name"
+      required
+    >
+
+    <br><br>
+
+    <input
+      type="text"
+      id="company"
+      placeholder="Company"
+      required
+    >
+
+    <br><br>
+
+    <input
+      type="number"
+      id="companySize"
+      placeholder="Company Size (No. of Employees)"
+      required
+    >
+
+    <br><br>
+
+    <input
+      type="text"
+      id="jobTitle"
+      placeholder="Job Title / Role"
+      required
+    >
+
+    <br><br>
+
+    <input
+      type="text"
+      id="interest"
+      placeholder="Interest"
+      required
+    >
+
+    <br><br>
+
+    <button type="submit">
+      Register
+    </button>
+
+  </form>
+
+  <script>
+    const form = document.getElementById("registerForm");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      // Bundle all inputs for processing
+      const attendee = {
+        name: document.getElementById("name").value,
+        company: document.getElementById("company").value,
+        companySize: document.getElementById("companySize").value,
+        jobTitle: document.getElementById("jobTitle").value,
+        interest: document.getElementById("interest").value
+      };
+
+      const response = await fetch("/register", {
+        method: "POST",
+        headers: {
+          "text-Type": "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(attendee)
+      });
+
+      const data = await response.json();
+
+      // Notifies user and displays returned metadata structure in log
+      alert(data.message);
+      console.log("Response from server:", data);
+    });
+  </script>
+
+</body>
+</html>
