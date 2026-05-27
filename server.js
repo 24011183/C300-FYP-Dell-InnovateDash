@@ -1,6 +1,5 @@
 const mysql = require("mysql2");
 const express = require("express");
-const fs = require("fs");
 
 const app = express();
 const PORT = 3000;
@@ -23,45 +22,44 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
 
-// Read attendees
-const getAttendees = () => {
-  const data = fs.readFileSync("attendees.json");
-  return JSON.parse(data);
-};
-
-// Save attendees
-const saveAttendees = (data) => {
-  fs.writeFileSync(
-    "attendees.json",
-    JSON.stringify(data, null, 2)
-  );
-};
-
 // Home route
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/attendee.html");
 });
 
-// Register attendee
+// Registration route SQL
 app.post("/register", (req, res) => {
 
-  const attendees = getAttendees();
+  const token = "USR" + Date.now();
 
-  const newAttendee = {
-    id: "USR" + Date.now(),
-    name: req.body.name,
-    company: req.body.company,
-    interest: req.body.interest
-  };
+  const { name, company, interest } = req.body;
 
-  attendees.push(newAttendee);
+  const sql = `
+    INSERT INTO attendees
+    (token, name, company, interest)
+    VALUES (?, ?, ?, ?)
+  `;
 
-  saveAttendees(attendees);
+  db.query(
+    sql,
+    [token, name, company, interest],
+    (err, result) => {
 
-  res.json({
-    message: "Registration successful",
-    attendee: newAttendee
-  });
+      if (err) {
+        console.log(err);
+
+        return res.json({
+          message: "Registration failed"
+        });
+      }
+
+      res.json({
+        message: "Registration successful",
+        token: token
+      });
+
+    }
+  );
 
 });
 
