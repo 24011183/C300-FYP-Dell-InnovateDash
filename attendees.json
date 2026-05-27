@@ -28,5 +28,20 @@
     "priority_color": "#f4a261",
     "action_recommendation": "Invite to upcoming Dell Storage tech webinar and track email open rate.",
     "processed_at": "27/05/2026, 9:55:42 pm"
+  },
+  {
+    "id": "USR1779894375642",
+    "name": "John",
+    "company": "Amazon",
+    "companySize": 22,
+    "jobTitle": "Service Crew",
+    "interest": "Storage",
+    "lead_score": 40,
+    "tier": "cold",
+    "assigned_team": "Infrastructure Solutions Group (ISG)",
+    "priority_level": "Cold",
+    "priority_color": "#4a5568",
+    "action_recommendation": "Assign to general nurturing newsletter.",
+    "processed_at": "27/05/2026, 11:06:15 pm"
   }
 ]
