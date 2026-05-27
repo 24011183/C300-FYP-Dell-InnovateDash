@@ -1,0 +1,23 @@
+[
+  {
+    "id": "USR1779170699179",
+    "name": "A",
+    "company": "Apple",
+    "interest": "ok"
+  },
+  {
+    "id": "USR1779854360094",
+    "name": "Lim Wee Teck",
+    "company": "Dell Technologies",
+    "companySize": 666,
+    "jobTitle": "IT Director",
+    "interest": "AI PCs",
+    "lead_score": 100,
+    "tier": "hot",
+    "assigned_team": "Client Solutions Group (CSG)",
+    "priority_level": "Hot Lead (VIP)",
+    "priority_color": "#e63946",
+    "action_recommendation": "Schedule 1-on-1 discovery call for AI PCs within 24 hours. Send Enterprise Catalog.",
+    "processed_at": "27/05/2026, 11:59:20 am"
+  }
+]

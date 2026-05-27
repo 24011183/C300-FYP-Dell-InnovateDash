@@ -20,41 +20,27 @@
 </header>
 
 <main>
-
-    <!-- ── SUMMARY STATS ── -->
     <div class="section-label">Event Overview</div>
-    <div class="stats-row" id="stats-row">
-        <!-- injected by JS -->
-    </div>
+    <div class="stats-row" id="stats-row"></div>
 
     <div class="content-grid">
-
-        <!-- ── LEAD CARDS ── -->
         <div class="leads-column">
             <div class="section-label">Processed Leads</div>
-            <div id="leads-container">
-                <!-- injected by JS -->
-            </div>
+            <div id="leads-container"></div>
         </div>
 
-        <!-- ── RIGHT PANEL ── -->
         <aside class="right-panel">
-
-            <!-- Score Distribution -->
             <div class="panel-card">
                 <div class="panel-title">Score Distribution</div>
                 <div id="dist-container"></div>
             </div>
 
-            <!-- Team Distribution Chart -->
             <div class="panel-card">
                 <div class="panel-title">Team Routing</div>
                 <div class="bar-chart" id="bar-chart"></div>
             </div>
-
         </aside>
     </div>
-
 </main>
 
 <footer class="footer">
@@ -62,11 +48,8 @@
     <span id="footer-time"></span>
 </footer>
 
-<!-- ── ROUTING LOGIC (from routing.js) ── -->
 <script>
-
-// ── PASTE YOUR routing.js CONTENT HERE ──
-// (or load via <script src="routing.js"> if serving from a local server)
+let currentTotalLeadsCount = -1;
 
 const analyzeLead = (attendee) => {
     const teamRoutes = {
@@ -89,23 +72,21 @@ const analyzeLead = (attendee) => {
         score += 15;
     }
 
-    if (attendee.interest === 'AI PCs' || attendee.interest === 'Cloud') {
+    const customerInterest = attendee.interest ? attendee.interest.toLowerCase() : '';
+    if (customerInterest.includes('ai') || customerInterest.includes('cloud')) {
         score += 30;
     } else {
         score += 15;
     }
 
     let priorityLabel = 'Cold';
-    let priorityColor = '#4a5568';
     let tier = 'cold';
 
     if (score >= 80) {
         priorityLabel = 'Hot Lead (VIP)';
-        priorityColor = '#e63946';
         tier = 'hot';
     } else if (score >= 50) {
         priorityLabel = 'Warm Lead';
-        priorityColor = '#f4a261';
         tier = 'warm';
     }
 
@@ -122,38 +103,27 @@ const analyzeLead = (attendee) => {
         tier,
         assigned_team: teamRoutes[attendee.interest] || 'General Sales',
         priority_level: priorityLabel,
-        priority_color: priorityColor,
         action_recommendation: recommendation,
-        processed_at: new Date().toLocaleString()
+        processed_at: attendee.processed_at || new Date().toLocaleString()
     };
 };
 
-const generateEventAnalytics = (allLeads) => ({
-    total_leads: allLeads.length,
-    hot_count:  allLeads.filter(l => l.tier === 'hot').length,
-    warm_count: allLeads.filter(l => l.tier === 'warm').length,
-    cold_count: allLeads.filter(l => l.tier === 'cold').length,
-    team_distribution: allLeads.reduce((acc, lead) => {
-        acc[lead.assigned_team] = (acc[lead.assigned_team] || 0) + 1;
-        return acc;
-    }, {}),
-    avg_score: Math.round(allLeads.reduce((s, l) => s + l.lead_score, 0) / allLeads.length)
-});
-
-// ── MOCK DATA — swap in real NFC data from Member 3 ──
-const mockLeads = [
-    { name: "Lim Wee Teck",  company: "Dell Technologies",  companySize: 650, jobTitle: "IT Director", interest: "AI PCs" },
-    { name: "John Tan",       company: "SME Pte Ltd",        companySize: 50,  jobTitle: "Engineer",    interest: "Storage" },
-    { name: "Sarah Cheng",    company: "MidCorp",            companySize: 250, jobTitle: "Tech Lead",   interest: "Cloud" },
-    { name: "Ravi Kumar",     company: "FinServe Asia",      companySize: 820, jobTitle: "IT Manager",  interest: "Cloud" },
-    { name: "Jessica Wong",   company: "StartupX",           companySize: 30,  jobTitle: "Developer",   interest: "AI PCs" }
-];
-
-// ── PROCESS LEADS ──
-const processedLeads = mockLeads.map(analyzeLead);
-const analytics = generateEventAnalytics(processedLeads);
-
-// ── RENDER HELPERS ──
+const generateEventAnalytics = (allLeads) => {
+    if (allLeads.length === 0) {
+        return { total_leads: 0, hot_count: 0, warm_count: 0, cold_count: 0, team_distribution: {}, avg_score: 0 };
+    }
+    return {
+        total_leads: allLeads.length,
+        hot_count:  allLeads.filter(l => l.tier === 'hot').length,
+        warm_count: allLeads.filter(l => l.tier === 'warm').length,
+        cold_count: allLeads.filter(l => l.tier === 'cold').length,
+        team_distribution: allLeads.reduce((acc, lead) => {
+            acc[lead.assigned_team] = (acc[lead.assigned_team] || 0) + 1;
+            return acc;
+        }, {}),
+        avg_score: Math.round(allLeads.reduce((s, l) => s + l.lead_score, 0) / allLeads.length)
+    };
+};
 
 function buildScoreRing(score, tier) {
     const colors = { hot: '#e63946', warm: '#f4a261', cold: '#4a5568' };
@@ -181,25 +151,43 @@ function buildScoreRing(score, tier) {
 
 function renderLeads(leads) {
     const container = document.getElementById('leads-container');
-    container.innerHTML = leads
-        .sort((a, b) => b.lead_score - a.lead_score)
-        .map(lead => `
-        <div class="lead-card ${lead.tier}">
-            <div>
-                <div class="lead-name">${lead.name}</div>
-                <div class="lead-meta">${lead.jobTitle} &nbsp;·&nbsp; ${lead.company} &nbsp;·&nbsp; ${lead.companySize.toLocaleString()} employees</div>
-                <div class="lead-tags">
-                    <span class="tag">📡 ${lead.interest}</span>
-                    <span class="tag team">→ ${lead.assigned_team}</span>
+    
+    if (leads.length === 0) {
+        container.innerHTML = `<div style="color: #64748b; padding: 20px; font-style: italic;">No leads captured on the event floor yet.</div>`;
+        return;
+    }
+
+    if (container.innerHTML.includes("No leads captured")) {
+        container.innerHTML = "";
+    }
+
+    const sortedLeads = leads.sort((a, b) => b.lead_score - a.lead_score);
+
+    sortedLeads.forEach(lead => {
+        const existingCard = document.getElementById(`card-${lead.id}`);
+
+        if (!existingCard) {
+            const cardHtml = `
+            <div class="lead-card ${lead.tier}" id="card-${lead.id}">
+                <div>
+                    <div class="lead-name">${lead.name}</div>
+                    <div class="lead-meta">${lead.jobTitle} &nbsp;·&nbsp; ${lead.company} &nbsp;·&nbsp; ${(parseInt(lead.companySize) || 0).toLocaleString()} employees</div>
+                    <div class="lead-tags">
+                        <span class="tag">📡 ${lead.interest}</span>
+                        <span class="tag team">→ ${lead.assigned_team}</span>
+                    </div>
+                    <div class="recommendation">${lead.action_recommendation}</div>
                 </div>
-                <div class="recommendation">${lead.action_recommendation}</div>
-            </div>
-            <div class="score-side">
-                ${buildScoreRing(lead.lead_score, lead.tier)}
-                <div class="priority-badge ${lead.tier}">${lead.priority_level}</div>
-                <div class="processed-time">${lead.processed_at}</div>
-            </div>
-        </div>`).join('');
+                <div class="score-side">
+                    ${buildScoreRing(lead.lead_score, lead.tier)}
+                    <div class="priority-badge ${lead.tier}">${lead.priority_level}</div>
+                    <div class="processed-time">${lead.processed_at}</div>
+                </div>
+            </div>`;
+            
+            container.insertAdjacentHTML('afterbegin', cardHtml);
+        }
+    });
 }
 
 function renderStats(a) {
@@ -247,6 +235,10 @@ function renderDistribution(a) {
 
 function renderBarChart(a) {
     const teams = Object.entries(a.team_distribution);
+    if (teams.length === 0) {
+        document.getElementById('bar-chart').innerHTML = `<div style="color: #64748b; font-style: italic; font-size: 13px;">No pipeline assignments calculated.</div>`;
+        return;
+    }
     const max = Math.max(...teams.map(([,v]) => v));
     document.getElementById('bar-chart').innerHTML = teams.map(([team, count]) => `
         <div class="bar-row">
@@ -266,13 +258,34 @@ function renderBarChart(a) {
     }, 200);
 }
 
-// ── INIT ──
-renderStats(analytics);
-renderLeads(processedLeads);
-renderDistribution(analytics);
-renderBarChart(analytics);
-document.getElementById('footer-time').textContent = new Date().toLocaleString();
+async function refreshDashboard() {
+    try {
+        const response = await fetch("/api/leads");
+        const rawData = await response.json();
+        const processedLeads = rawData.map(analyzeLead);
+        
+        if (processedLeads.length === currentTotalLeadsCount) {
+            return; 
+        }
 
+        currentTotalLeadsCount = processedLeads.length;
+        const analytics = generateEventAnalytics(processedLeads);
+
+        renderStats(analytics);
+        renderDistribution(analytics);
+        renderBarChart(analytics);
+        renderLeads(processedLeads);
+        
+    } catch (error) {
+        console.error("Dashboard synchronization error:", error);
+    }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    refreshDashboard();
+    document.getElementById('footer-time').textContent = new Date().toLocaleString();
+    setInterval(refreshDashboard, 3000);
+});
 </script>
 </body>
 </html>
