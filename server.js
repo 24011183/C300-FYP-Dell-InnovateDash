@@ -5,33 +5,58 @@ const fs = require("fs");
 const app = express();
 const PORT = 3000;
 
-// Database Connection
-const db = mysql.createConnection({
+// Database Connection Definition matching Alicia's connection settings
+const dbConfig = {
   host: "localhost",
   user: "root",
   password: "Password123!",
-  database: "dell_nfc_system"
-});
+  database: "dell_nfc_system",
+  connectTimeout: 3000 // 3 seconds timeout safeguard
+};
 
-db.connect((err) => {
-  if (err) {
-    console.log("Database connection failed");
-  } else {
-    console.log("Connected to MySQL");
-  }
-});
+let db = mysql.createConnection(dbConfig);
+
+// Helper function to establish connection cleanly
+const handleDisconnect = () => {
+  db.connect((err) => {
+    if (err) {
+      console.log("❌ Database connection failed. Running on JSON fallback mode.");
+    } else {
+      console.log("✅ Connected to MySQL successfully (Target: attendees table).");
+    }
+  });
+
+  // Reconnect automatically if connection drops mid-event
+  db.on('error', (err) => {
+    console.log('⚠️ Database error occurred:', err.code);
+    if (err.code === 'PROTOCOL_CONNECTION_LOST' || err.code === 'ECONNREFUSED') {
+      console.log('🔄 Re-instantiating fallback connection settings...');
+      db = mysql.createConnection(dbConfig);
+    }
+  });
+};
+
+handleDisconnect();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
 
-// Read attendees helper
+// Read attendees helper (JSON Backup)
 const getAttendees = () => {
-  const data = fs.readFileSync("attendees.json");
-  return JSON.parse(data);
+  try {
+    if (!fs.existsSync("attendees.json")) {
+      fs.writeFileSync("attendees.json", JSON.stringify([], null, 2));
+      return [];
+    }
+    const data = fs.readFileSync("attendees.json");
+    return JSON.parse(data);
+  } catch (err) {
+    return [];
+  }
 };
 
-// Save attendees helper
+// Save attendees helper (JSON Backup)
 const saveAttendees = (data) => {
   fs.writeFileSync(
     "attendees.json",
@@ -63,7 +88,7 @@ const analyzeLead = (attendee) => {
         score += 15;
     }
 
-    // Signal C: Strategic Product Match (UPDATED: Fuzzy Text Matching)
+    // Signal C: Strategic Product Match (Fuzzy Text Matching)
     const customerInterest = attendee.interest ? attendee.interest.toLowerCase() : '';
     if (customerInterest.includes('ai') || customerInterest.includes('cloud')) {
         score += 30;
@@ -109,13 +134,17 @@ app.get("/", (req, res) => {
   res.sendFile(__dirname + "/attendee.html");
 });
 
-// Intercepted Registration Endpoint
+// Dashboard route html serving
+app.get("/dashboard", (req, res) => {
+  res.sendFile(__dirname + "/dashboard.html");
+});
+
+// ── DUAL STORAGE REGISTRATION ENDPOINT (ALICIA MYSQL SCHEMA ALIGNED) ──
 app.post("/register", (req, res) => {
   const attendees = getAttendees();
 
-  // Parse raw inputs including Member 4 signals
   const rawAttendee = {
-    id: "USR" + Date.now(),
+    id: "USR" + Date.now(), // This string maps safely into Alicia's 'token' column
     name: req.body.name,
     company: req.body.company,
     companySize: parseInt(req.body.companySize) || 0,
@@ -123,21 +152,80 @@ app.post("/register", (req, res) => {
     interest: req.body.interest
   };
 
-  // Run data packet through the Intelligence Layer
   const enrichedLead = analyzeLead(rawAttendee);
 
-  // Commit enriched data to local JSON stack
+  // 1. SAVE TO JSON IMMEDIATELY (Local Safety Cache)
   attendees.push(enrichedLead);
   saveAttendees(attendees);
+  console.log(`💾 Saved ${enrichedLead.name} safely to local JSON file.`);
 
-  // Send back full object to client payload
-  res.json({ message: "Registration successful!", lead: enrichedLead });
+  // 2. ATTEMPT MYSQL INSERT (Aligned with Alicia's column structural layout)
+  const query = `
+    INSERT INTO attendees 
+    (token, name, company, companySize, jobTitle, interest, lead_score, tier, assigned_team, priority_level, priority_color, action_recommendation) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  const values = [
+    enrichedLead.id, // Mapping your unique tracking string cleanly to her token field
+    enrichedLead.name,
+    enrichedLead.company,
+    enrichedLead.companySize,
+    enrichedLead.jobTitle,
+    enrichedLead.interest,
+    enrichedLead.lead_score,
+    enrichedLead.tier,
+    enrichedLead.assigned_team,
+    enrichedLead.priority_level,
+    enrichedLead.priority_color,
+    enrichedLead.action_recommendation
+  ];
+
+  db.query(query, values, (err, result) => {
+    if (err) {
+      console.error("❌ MySQL Insert Failed. Data preserved in JSON backup:", err.message);
+      return res.json({ 
+        message: "Registration successful (Saved to JSON Backup)!", 
+        lead: enrichedLead 
+      });
+    }
+    
+    console.log("✅ Successfully synced lead to Alicia's attendees MySQL table!");
+    res.json({ message: "Registration successful!", lead: enrichedLead });
+  });
 });
 
-// Endpoint for your Member 4 Dashboard to fetch up-to-date lead metrics
+// ── FIXED DASHBOARD API ENDPOINT (ANTI-HANG PROOF via ALICIA TABLE) ──
 app.get("/api/leads", (req, res) => {
-  const attendees = getAttendees(); // Reads your current attendees.json file
-  res.json(attendees); // Sends the data array straight to your dashboard UI
+  let hasResponded = false;
+
+  // Safety clock: Fall back to JSON array inside 1.5s if MySQL connection freezes
+  const fallbackTimeout = setTimeout(() => {
+    if (!hasResponded) {
+      hasResponded = true;
+      console.log("⏱️ MySQL query timed out. Forcing dashboard to run on JSON fallback.");
+      const attendees = getAttendees();
+      res.json(attendees);
+    }
+  }, 1500);
+
+  // Fetching directly from Alicia's table layout ordering by recent entries
+  const query = "SELECT * FROM attendees ORDER BY created_at DESC";
+
+  db.query(query, (err, results) => {
+    if (hasResponded) return; 
+    hasResponded = true;
+    clearTimeout(fallbackTimeout); 
+
+    if (err) {
+      console.log("⚠️ MySQL error detected. Fetching data from JSON instead:", err.message);
+      const attendees = getAttendees();
+      return res.json(attendees);
+    }
+
+    console.log(`📊 Loaded dashboard with ${results.length} records straight from MySQL table.`);
+    res.json(results);
+  });
 });
 
 app.listen(PORT, () => {
