@@ -174,6 +174,37 @@ app.get("/api/leads", (req, res) => {
 
 });
 
+// NFC Retrieval Route - Alicia
+
+app.get("/attendee/:token", (req, res) => {
+
+  const token = req.params.token;
+
+  const sql = `
+    SELECT * FROM attendees
+    WHERE token = ?
+  `;
+
+  db.query(sql, [token], (err, results) => {
+
+    if (err) {
+      return res.json({
+        message: "Database error"
+      });
+    }
+
+    if (results.length === 0) {
+      return res.json({
+        message: "Attendee not found"
+      });
+    }
+
+    res.json(results[0]);
+
+  });
+
+});
+
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
