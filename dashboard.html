@@ -25,7 +25,7 @@
 
     <div class="content-grid">
         <div class="leads-column">
-            <div class="section-label">Processed Leads</div>
+            <div class="section-label">Processed Leads (Prioritized High → Low Value)</div>
             <div id="leads-container"></div>
         </div>
 
@@ -49,8 +49,6 @@
 </footer>
 
 <script>
-let currentTotalLeadsCount = -1;
-
 const analyzeLead = (attendee) => {
     const teamRoutes = {
         'AI PCs':       'Client Solutions Group (CSG)',
@@ -97,6 +95,14 @@ const analyzeLead = (attendee) => {
         recommendation = `Invite to upcoming Dell ${attendee.interest} tech webinar and track email open rate.`;
     }
 
+    // Capture the static created_at timestamp cleanly without changing it
+    let displayTime = "Just now";
+    if (attendee.created_at) {
+        displayTime = new Date(attendee.created_at).toLocaleString();
+    } else if (attendee.processed_at) {
+        displayTime = attendee.processed_at;
+    }
+
     return {
         ...attendee,
         lead_score: score,
@@ -104,7 +110,7 @@ const analyzeLead = (attendee) => {
         assigned_team: teamRoutes[attendee.interest] || 'General Sales',
         priority_level: priorityLabel,
         action_recommendation: recommendation,
-        processed_at: attendee.processed_at || new Date().toLocaleString()
+        processed_at: displayTime
     };
 };
 
@@ -125,25 +131,28 @@ const generateEventAnalytics = (allLeads) => {
     };
 };
 
-function buildScoreRing(score, tier) {
+function buildScoreRing(score, tier, leadId) {
     const colors = { hot: '#e63946', warm: '#f4a261', cold: '#4a5568' };
     const color = colors[tier];
     const r = 28;
     const circ = 2 * Math.PI * r;
     const offset = circ - (score / 100) * circ;
-    const id = 'ring-' + Math.random().toString(36).slice(2);
+    const ringId = 'ring-' + leadId;
+    
     setTimeout(() => {
-        const el = document.getElementById(id);
+        const el = document.getElementById(ringId);
         if (el) el.style.strokeDashoffset = offset;
-    }, 100);
+    }, 50);
+    
     return `
         <div class="score-ring">
             <svg viewBox="0 0 72 72" width="72" height="72">
                 <circle class="track" cx="36" cy="36" r="${r}"/>
-                <circle id="${id}" class="fill" cx="36" cy="36" r="${r}"
+                <circle id="${ringId}" class="fill" cx="36" cy="36" r="${r}"
                     stroke="${color}"
                     stroke-dasharray="${circ}"
-                    stroke-dashoffset="${circ}"/>
+                    stroke-dashoffset="${circ}"
+                    style="transition: stroke-dashoffset 0.4s ease;"/>
             </svg>
             <div class="score-number" style="color:${color}">${score}</div>
         </div>`;
@@ -159,6 +168,7 @@ function renderLeads(leads) {
 
     // Sort leads strictly by computed scoring order (highest to lowest)
     const sortedLeads = leads.sort((a, b) => b.lead_score - a.lead_score);
+    container.innerHTML = "";
 
     // Clear old positioning maps entirely to guarantee accurate stack ranks
     container.innerHTML = "";
@@ -178,6 +188,7 @@ function renderLeads(leads) {
             </div>
             <div class="score-side">
                 ${buildScoreRing(lead.lead_score, lead.tier)}
+                ${buildScoreRing(lead.lead_score, lead.tier, lead.id)}
                 <div class="priority-badge ${lead.tier}">${lead.priority_level}</div>
                 <div class="processed-time">${lead.processed_at}</div>
             </div>
@@ -252,21 +263,37 @@ function renderBarChart(a) {
         document.querySelectorAll('.bar-fill').forEach(el => {
             el.style.width = el.dataset.width + '%';
         });
-    }, 200);
+    }, 100);
 }
+
+// ── ABSOLUTE LOCKDOWN DATA ORDER FINGERPRINT ──
+window.currentDashboardFingerprint = "";
 
 async function refreshDashboard() {
     try {
         const response = await fetch("/api/leads");
         const rawData = await response.json();
-        const processedLeads = rawData.map(analyzeLead);
         
         // Safety guard: halt rendering tree if dataset length is stable
         if (processedLeads.length === currentTotalLeadsCount) {
             return; 
+        if (!rawData || rawData.length === 0) {
+            renderLeads([]);
+            return;
         }
 
-        currentTotalLeadsCount = processedLeads.length;
+        // 🚀 CRITICAL REWRITE: Track ONLY the database entries' native identifiers.
+        // If the number of records is the same, and the unique primary keys match in sequence,
+        // no structural changes have occurred. We drop out and freeze the DOM safely.
+        const dataFingerprint = rawData.length + "-" + rawData.map(l => `${l.token || l.id}`).join('|');
+        
+        if (window.currentDashboardFingerprint === dataFingerprint) {
+            return; // Exit silently. No aggressive screen blinks or redraw flashes!
+        }
+        window.currentDashboardFingerprint = dataFingerprint;
+
+        console.log("🚀 True data change recognized. Rendering updated priority stack cleanly.");
+        const processedLeads = rawData.map(analyzeLead);
         const analytics = generateEventAnalytics(processedLeads);
 
         renderStats(analytics);
@@ -281,7 +308,11 @@ async function refreshDashboard() {
 
 window.addEventListener('DOMContentLoaded', () => {
     refreshDashboard();
+    
+    // Lock footer clock layout from rendering repeatedly
     document.getElementById('footer-time').textContent = new Date().toLocaleString();
+    
+    // Check for updates quietly in the background without layout shifts
     setInterval(refreshDashboard, 3000);
 });
 </script>
