@@ -1,22 +1,22 @@
 // server.js - alicia
 const mysql = require("mysql2");
 const express = require("express");
+const fs = require("fs");
 
 const app = express();
 const PORT = 3000;
 
 // Database Connection - alicia
-const db = mysql.createConnection({
-// Database Connection Definition with a explicit timeout configuration
 const dbConfig = {
   host: "localhost",
   user: "root",
   password: "Password123!",
   database: "dell_nfc_system",
-  connectTimeout: 3000 // 3 seconds timeout limit so it never hangs forever
+  connectTimeout: 3000
 };
 
 let db = mysql.createConnection(dbConfig);
+
 
 // Helper function to establish connection cleanly
 const handleDisconnect = () => {
@@ -76,14 +76,6 @@ const analyzeLead = (attendee) => {
   };
 
   let score = 0;
-    // Signal C: Strategic Product Match (Fuzzy Text Matching)
-    const customerInterest = attendee.interest ? attendee.interest.toLowerCase() : '';
-    if (customerInterest.includes('ai') || customerInterest.includes('cloud')) {
-        score += 30;
-    } else {
-        score += 15;
-    }
-
   // Signal A: Company Size Calculation
   if (attendee.companySize > 500) score += 40;
   else if (attendee.companySize > 100) score += 25;
@@ -97,13 +89,13 @@ const analyzeLead = (attendee) => {
     score += 15;
   }
 
-  // Signal C: Strategic Product Match (UPDATED: Fuzzy Text Matching)
-  const customerInterest = attendee.interest ? attendee.interest.toLowerCase() : '';
-  if (customerInterest.includes('ai') || customerInterest.includes('cloud')) {
-    score += 30;
-  } else {
-    score += 15;
-  }
+// Signal C: Strategic Product Match (UPDATED: Fuzzy Text Matching)
+const customerInterest = attendee.interest ? attendee.interest.toLowerCase() : '';
+if (customerInterest.includes('ai') || customerInterest.includes('cloud')) {
+  score += 30;
+} else {
+  score += 15;
+}
 
   let priorityLabel = 'Cold';
   let priorityColor = '#4a5568';
