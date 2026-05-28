@@ -1,0 +1,33 @@
+.App {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  background-color: #f7f9fc;
+  min-height: 100vh;
+  color: #222;
+  padding: 30px;
+}
+
+.leadCard {
+  background-color: white;
+  margin: auto;
+  padding: 20px;
+  border-radius: 10px;
+  width: 400px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+textarea {
+  width: 100%;
+  height: 100px;
+  margin-top: 10px;
+}
+
+button {
+  margin-top: 15px;
+  padding: 10px 20px;
+  background-color: #007db8;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
