@@ -1,0 +1,40 @@
+services:
+
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    container_name: dell_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: Password123!
+      MYSQL_DATABASE: dell_nfc_system
+    ports:
+      - "3307:3306"
+    volumes:
+      - dell_db_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pPassword123!"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Node.js App
+  app:
+    build: .
+    container_name: dell_app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      GEMINI_API_KEY: AQ.Ab8RN6K1_ecNjrpDL0DfM1Yc5hupUjfEXwja14_dfCoHX1L-pQ
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: Password123!
+      DB_NAME: dell_nfc_system
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  dell_db_data:

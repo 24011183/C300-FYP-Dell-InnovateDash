@@ -1,36 +1,63 @@
 const mysql = require("mysql2");
 const express = require("express");
 const fs = require("fs");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+require("dotenv").config();
 
 const app = express();
 const PORT = 3000;
 
-// Database Connection Definition matching Alicia's connection settings
+// Gemini AI Setup
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// Database Connection
 const dbConfig = {
-  host: "localhost",
-  user: "root",
-  password: "Password123!",
-  database: "dell_nfc_system",
-  connectTimeout: 3000 // 3 seconds timeout safeguard
+  host: process.env.DB_HOST || "localhost",
+  user: process.env.DB_USER || "root",
+  password: process.env.DB_PASSWORD || "Password123!",
+  database: process.env.DB_NAME || "dell_nfc_system",
+  connectTimeout: 1000,
+  timeout: 800
 };
 
 let db = mysql.createConnection(dbConfig);
 
-// Helper function to establish connection cleanly
 const handleDisconnect = () => {
   db.connect((err) => {
     if (err) {
       console.log("❌ Database connection failed. Running on JSON fallback mode.");
     } else {
       console.log("✅ Connected to MySQL successfully (Target: attendees table).");
+      // Auto-create table if it doesn't exist
+      const createTable = `
+        CREATE TABLE IF NOT EXISTS attendees (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          token VARCHAR(255) NOT NULL UNIQUE,
+          name VARCHAR(255) NOT NULL,
+          company VARCHAR(255) NOT NULL,
+          companySize INT NOT NULL,
+          jobTitle VARCHAR(255) NOT NULL,
+          email VARCHAR(255) DEFAULT '',
+          phone VARCHAR(50) DEFAULT '',
+          interest TEXT NOT NULL,
+          assigned_team VARCHAR(100) DEFAULT 'General Sales Hub',
+          action_recommendation TEXT,
+          routing_status VARCHAR(50) DEFAULT 'ROUTED_AUTOMATICALLY',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_assigned_team (assigned_team)
+        )
+      `;
+      db.query(createTable, (err) => {
+        if (err) console.error("❌ Table creation error:", err.message);
+        else console.log("✅ Attendees table ready.");
+      });
     }
   });
 
-  // Reconnect automatically if connection drops mid-event
-  db.on('error', (err) => {
-    console.log('⚠️ Database error occurred:', err.code);
-    if (err.code === 'PROTOCOL_CONNECTION_LOST' || err.code === 'ECONNREFUSED') {
-      console.log('🔄 Re-instantiating fallback connection settings...');
+  db.on("error", (err) => {
+    console.log("⚠️ Database error occurred:", err.code);
+    if (err.code === "PROTOCOL_CONNECTION_LOST" || err.code === "ECONNREFUSED") {
+      console.log("🔄 Re-instantiating fallback connection settings...");
       db = mysql.createConnection(dbConfig);
     }
   });
@@ -42,7 +69,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
 
-// Read attendees helper (JSON Backup)
+// ── JSON FALLBACK HELPERS ──
 const getAttendees = () => {
   try {
     if (!fs.existsSync("attendees.json")) {
@@ -56,178 +83,282 @@ const getAttendees = () => {
   }
 };
 
-// Save attendees helper (JSON Backup)
 const saveAttendees = (data) => {
-  fs.writeFileSync(
-    "attendees.json",
-    JSON.stringify(data, null, 2)
-  );
+  fs.writeFileSync("attendees.json", JSON.stringify(data, null, 2));
 };
 
-// ── MEMBER 4: SMART ROUTING, RICH SCORING & RECOMMENDATION ENGINE ──
-const analyzeLead = (attendee) => {
-    const teamRoutes = {
-        'AI PCs': 'Client Solutions Group (CSG)',
-        'Storage': 'Infrastructure Solutions Group (ISG)',
-        'Cloud': 'APEX & Cloud Services',
-        'Consultancy': 'Professional Services'
-    };
+// ── MEMBER 4: AI-POWERED ROUTING & RECOMMENDATION ENGINE ──
+const analyzeLead = async (attendee) => {
 
-    let score = 0;
+  // Step 1: Rule-based routing — assign Dell team based on interest
+  const teamRoutes = {
+    "AI PCs": "Client Solutions Group (CSG)",
+    "Storage": "Infrastructure Solutions Group (ISG)",
+    "Cloud": "APEX & Cloud Services",
+    "Consultancy": "Professional Services"
+  };
 
-    // Signal A: Company Size Calculation
-    if (attendee.companySize > 500) score += 40;
-    else if (attendee.companySize > 100) score += 25;
-    else score += 10;
+  const assigned_team = teamRoutes[attendee.interest] || "General Sales";
 
-    // Signal B: Job Role / Title Calculation (Fuzzy Text Matching)
-    const role = attendee.jobTitle ? attendee.jobTitle.toLowerCase() : '';
-    if (role.includes('director') || role.includes('manager') || role.includes('lead')) {
-        score += 30;
-    } else {
-        score += 15;
-    }
+  // Step 2: Determine company size tier for smarter recommendations
+  let companyTier = "small business";
+  if (attendee.companySize >= 1000) companyTier = "large enterprise";
+  else if (attendee.companySize >= 200) companyTier = "mid-market company";
 
-    // Signal C: Strategic Product Match (Fuzzy Text Matching)
-    const customerInterest = attendee.interest ? attendee.interest.toLowerCase() : '';
-    if (customerInterest.includes('ai') || customerInterest.includes('cloud')) {
-        score += 30;
-    } else {
-        score += 15;
-    }
+  // Step 3: Build Gemini prompt
+  const prompt = `
+You are a Dell Technologies sales assistant helping route event leads at the Dell Technologies Forum Singapore.
 
-    let priorityLabel = 'Cold';
-    let priorityColor = '#4a5568';
-    let tier = 'cold';
+A potential customer just registered at a Dell booth.
 
-    if (score >= 80) {
-        priorityLabel = 'Hot Lead (VIP)';
-        priorityColor = '#e63946';
-        tier = 'hot';
-    } else if (score >= 50) {
-        priorityLabel = 'Warm Lead';
-        priorityColor = '#f4a261';
-        tier = 'warm';
-    }
+Their profile:
+- Name: ${attendee.name}
+- Company: ${attendee.company} (${companyTier}, ${attendee.companySize} employees)
+- Job Title: ${attendee.jobTitle}
+- Interest Area: ${attendee.interest}
+- Assigned Dell Team: ${assigned_team}
 
-    let recommendation = 'Assign to general nurturing newsletter.';
-    if (score >= 80) {
-        recommendation = `Schedule 1-on-1 discovery call for ${attendee.interest} within 24 hours. Send Enterprise Catalog.`;
-    } else if (score >= 50) {
-        recommendation = `Invite to upcoming Dell ${attendee.interest} tech webinar and track email open rate.`;
-    }
+Dell product context by interest area:
+- AI PCs: Dell Latitude series with Intel Core Ultra, Dell Optimizer AI software, Dell Precision workstations
+- Storage: Dell PowerStore, Dell PowerFlex, Dell ObjectScale for unstructured data
+- Cloud: Dell APEX as-a-service portfolio, Dell APEX Cloud Platforms, multicloud solutions
+- Consultancy: Dell ProDeploy Plus, Dell ProSupport Enterprise Suite, Dell Residency Services
+
+Based on this profile, give ONE specific and actionable follow-up recommendation
+that the ${assigned_team} team should take within 48 hours after the event.
+
+Rules:
+- Reference specific Dell products or services relevant to their interest area
+- Be specific to their job title and company size
+- Recommend a real action (e.g. book a call, send a specific resource, invite to a specific event)
+- Consider that a ${companyTier} with a ${attendee.jobTitle} has different priorities than others
+- Do NOT use vague responses like "send newsletter" or "track email"
+- Do NOT include scores or labels like hot/warm/cold
+- Return only the recommendation as a single sentence. No extra explanation.
+`;
+
+  try {
+    // Step 4: Call Gemini 3.5 Flash
+    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
+    const result = await model.generateContent(prompt);
+    const recommendation = result.response.text().trim();
+
+    console.log(`🤖 Gemini recommendation for ${attendee.name}: ${recommendation}`);
+    console.log(`📨 Lead routed to: ${assigned_team}`);
 
     return {
-        ...attendee,
-        lead_score: score,
-        tier,
-        assigned_team: teamRoutes[attendee.interest] || 'General Sales',
-        priority_level: priorityLabel,
-        priority_color: priorityColor,
-        action_recommendation: recommendation,
-        processed_at: new Date().toLocaleString()
+      ...attendee,
+      assigned_team,
+      action_recommendation: recommendation,
+      processed_at: new Date().toLocaleString()
     };
+
+  } catch (err) {
+    console.error("❌ Gemini API error:", err.message);
+
+    // Fallback if Gemini fails
+    const fallbackActions = {
+      "AI PCs": `Schedule a Dell Latitude AI PC demo session for ${attendee.name} from ${attendee.company}, showcasing Dell Optimizer and Intel Core Ultra capabilities for their ${companyTier} workforce.`,
+      "Storage": `Arrange a Dell PowerStore technical briefing for ${attendee.name} from ${attendee.company} to assess their current storage infrastructure and present a migration roadmap.`,
+      "Cloud": `Invite ${attendee.name} from ${attendee.company} to a Dell APEX as-a-service workshop to explore multicloud deployment options suited for a ${companyTier}.`,
+      "Consultancy": `Schedule a Dell ProDeploy Plus scoping call with ${attendee.name} from ${attendee.company} to outline a deployment and ProSupport Enterprise Suite plan.`
+    };
+
+    return {
+      ...attendee,
+      assigned_team,
+      action_recommendation: fallbackActions[attendee.interest] || `Follow up with ${attendee.name} regarding ${attendee.interest} solutions.`,
+      processed_at: new Date().toLocaleString()
+    };
+  }
 };
 
-// Home route
+// ── ROUTES ──
+
+// Home — Attendee registration page
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/attendee.html");
 });
 
-// Dashboard route html serving
+// Fiona's rep dashboard
 app.get("/dashboard", (req, res) => {
   res.sendFile(__dirname + "/dashboard.html");
 });
 
-// ── DUAL STORAGE REGISTRATION ENDPOINT (ALICIA MYSQL SCHEMA ALIGNED) ──
-app.post("/register", (req, res) => {
+// Dell team view — each team sees only their own leads
+app.get("/team", (req, res) => {
+  res.sendFile(__dirname + "/team-dashboard.html");
+});
+
+// ── REGISTRATION ENDPOINT ──
+app.post("/register", async (req, res) => {
   const attendees = getAttendees();
 
   const rawAttendee = {
-    id: "USR" + Date.now(), // This string maps safely into Alicia's 'token' column
+    id: "USR" + Date.now(),
     name: req.body.name,
     company: req.body.company,
     companySize: parseInt(req.body.companySize) || 0,
     jobTitle: req.body.jobTitle || "",
-    interest: req.body.interest
+    email: req.body.email || "",
+    phone: req.body.phone || "",
+    interest: req.body.interest,
+    assigned_team: getTeamRoute(req.body.interest),
+    action_recommendation: "Processing...",
+    processed_at: new Date().toLocaleString()
   };
 
-  const enrichedLead = analyzeLead(rawAttendee);
-
-  // 1. SAVE TO JSON IMMEDIATELY (Local Safety Cache)
-  attendees.push(enrichedLead);
+  // Save to JSON immediately
+  attendees.push(rawAttendee);
   saveAttendees(attendees);
-  console.log(`💾 Saved ${enrichedLead.name} safely to local JSON file.`);
+  console.log(`💾 Saved ${rawAttendee.name} to local JSON file.`);
 
-  // 2. ATTEMPT MYSQL INSERT (Aligned with Alicia's column structural layout)
+  // Insert to MySQL immediately
   const query = `
     INSERT INTO attendees 
-    (token, name, company, companySize, jobTitle, interest, lead_score, tier, assigned_team, priority_level, priority_color, action_recommendation) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (token, name, company, companySize, jobTitle, email, phone, interest, assigned_team, action_recommendation) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   const values = [
-    enrichedLead.id, // Mapping your unique tracking string cleanly to her token field
-    enrichedLead.name,
-    enrichedLead.company,
-    enrichedLead.companySize,
-    enrichedLead.jobTitle,
-    enrichedLead.interest,
-    enrichedLead.lead_score,
-    enrichedLead.tier,
-    enrichedLead.assigned_team,
-    enrichedLead.priority_level,
-    enrichedLead.priority_color,
-    enrichedLead.action_recommendation
+    rawAttendee.id,
+    rawAttendee.name,
+    rawAttendee.company,
+    rawAttendee.companySize,
+    rawAttendee.jobTitle,
+    rawAttendee.email,
+    rawAttendee.phone,
+    rawAttendee.interest,
+    rawAttendee.assigned_team,
+    rawAttendee.action_recommendation
   ];
 
   db.query(query, values, (err, result) => {
     if (err) {
-      console.error("❌ MySQL Insert Failed. Data preserved in JSON backup:", err.message);
-      return res.json({ 
-        message: "Registration successful (Saved to JSON Backup)!", 
-        lead: enrichedLead 
-      });
+      console.error("❌ MySQL Insert Failed:", err.message);
+    } else {
+      console.log("✅ Successfully synced lead to MySQL table!");
     }
-    
-    console.log("✅ Successfully synced lead to Alicia's attendees MySQL table!");
-    res.json({ message: "Registration successful!", lead: enrichedLead });
   });
+
+  // Respond immediately — don't wait for Gemini
+  res.json({ message: "Registration successful!", lead: rawAttendee });
+
+  // Call Gemini in background and update the recommendation after
+  enrichLeadWithAI(rawAttendee);
 });
 
-// ── FIXED DASHBOARD API ENDPOINT (ANTI-HANG PROOF via ALICIA TABLE) ──
+// ── HELPER: Get team route without Gemini ──
+const getTeamRoute = (interest) => {
+  const teamRoutes = {
+    "AI PCs": "Client Solutions Group (CSG)",
+    "Storage": "Infrastructure Solutions Group (ISG)",
+    "Cloud": "APEX & Cloud Services",
+    "Consultancy": "Professional Services"
+  };
+  return teamRoutes[interest] || "General Sales";
+};
+
+// ── BACKGROUND AI ENRICHMENT ──
+const enrichLeadWithAI = async (attendee) => {
+  try {
+    const enriched = await analyzeLead(attendee);
+
+    // Update JSON
+    const attendees = getAttendees();
+    const idx = attendees.findIndex(a => a.id === attendee.id);
+    if (idx !== -1) {
+      attendees[idx].action_recommendation = enriched.action_recommendation;
+      saveAttendees(attendees);
+    }
+
+    // Update MySQL
+    const updateQuery = `
+      UPDATE attendees 
+      SET action_recommendation = ? 
+      WHERE token = ?
+    `;
+    db.query(updateQuery, [enriched.action_recommendation, attendee.id], (err) => {
+      if (err) {
+        console.error("❌ MySQL Update Failed:", err.message);
+      } else {
+        console.log(`✅ AI recommendation updated for ${attendee.name}`);
+      }
+    });
+
+  } catch (err) {
+    console.error("❌ Background AI enrichment failed:", err.message);
+  }
+};
+
+// ── FIONA'S DASHBOARD API — all leads ──
 app.get("/api/leads", (req, res) => {
   let hasResponded = false;
 
-  // Safety clock: Fall back to JSON array inside 1.5s if MySQL connection freezes
   const fallbackTimeout = setTimeout(() => {
     if (!hasResponded) {
       hasResponded = true;
-      console.log("⏱️ MySQL query timed out. Forcing dashboard to run on JSON fallback.");
+      console.log("⏱️ MySQL timed out. Loading from JSON fallback.");
       const attendees = getAttendees();
       res.json(attendees);
     }
-  }, 1500);
+  }, 800);
 
-  // Fetching directly from Alicia's table layout ordering by recent entries
   const query = "SELECT * FROM attendees ORDER BY created_at DESC";
 
   db.query(query, (err, results) => {
-    if (hasResponded) return; 
+    if (hasResponded) return;
     hasResponded = true;
-    clearTimeout(fallbackTimeout); 
+    clearTimeout(fallbackTimeout);
 
     if (err) {
-      console.log("⚠️ MySQL error detected. Fetching data from JSON instead:", err.message);
+      console.log("⚠️ MySQL error. Fetching from JSON instead:", err.message);
       const attendees = getAttendees();
       return res.json(attendees);
     }
 
-    console.log(`📊 Loaded dashboard with ${results.length} records straight from MySQL table.`);
+    console.log(`📊 Dashboard loaded ${results.length} leads from MySQL.`);
+    res.json(results);
+  });
+});
+
+// ── TEAM API — filtered leads by assigned team ──
+app.get("/api/leads/team/:teamName", (req, res) => {
+  const teamName = decodeURIComponent(req.params.teamName);
+  let hasResponded = false;
+
+  const fallbackTimeout = setTimeout(() => {
+    if (!hasResponded) {
+      hasResponded = true;
+      console.log("⏱️ MySQL timed out. Loading from JSON fallback.");
+      const attendees = getAttendees();
+      const filtered = attendees.filter(a => a.assigned_team === teamName);
+      res.json(filtered);
+    }
+  }, 800);
+
+  const query = "SELECT * FROM attendees WHERE assigned_team = ? ORDER BY created_at DESC";
+
+  db.query(query, [teamName], (err, results) => {
+    if (hasResponded) return;
+    hasResponded = true;
+    clearTimeout(fallbackTimeout);
+
+    if (err) {
+      console.log("⚠️ MySQL error. Fetching from JSON instead:", err.message);
+      const attendees = getAttendees();
+      const filtered = attendees.filter(a => a.assigned_team === teamName);
+      return res.json(filtered);
+    }
+
+    console.log(`📨 Team '${teamName}' loaded ${results.length} leads.`);
     res.json(results);
   });
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`📋 Attendee registration: http://localhost:${PORT}/`);
+  console.log(`📊 Rep dashboard:         http://localhost:${PORT}/dashboard`);
+  console.log(`👥 Team view:             http://localhost:${PORT}/team`);
 });
