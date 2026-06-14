@@ -374,12 +374,12 @@ const computeLeadScore = (attendee) => {
   let score = 0;
   const breakdown = {};
 
-  // 1. Title seniority — decision-makers are worth more
+// 1. Title seniority — decision-makers are worth more
   const title = (attendee.jobTitle || "").toLowerCase();
-  let titlePts = 5;
-  if (/(chief|ceo|cto|cio|cfo|founder|president|owner|c-level)/.test(title)) titlePts = 35;
-  else if (/(vp|vice president|director|head)/.test(title)) titlePts = 28;
-  else if (/(manager|lead)/.test(title)) titlePts = 15;
+  let titlePts = 10; // default bumped from 5 so unknown titles aren't punished too hard
+  if (/(chief|ceo|cto|cio|cfo|coo|founder|co-founder|president|owner|partner|c-level|managing director)/.test(title)) titlePts = 35;
+  else if (/(vp|vice president|director|head|principal|executive|officer|gm|general manager)/.test(title)) titlePts = 28;
+  else if (/(manager|lead|supervisor|architect|senior|specialist)/.test(title)) titlePts = 15;
   breakdown.title = titlePts;
   score += titlePts;
 
