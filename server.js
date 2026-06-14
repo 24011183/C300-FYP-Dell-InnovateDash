@@ -16,13 +16,14 @@ const dbConfig = {
   user: process.env.DB_USER || "root",
   password: process.env.DB_PASSWORD || "Password123!",
   database: process.env.DB_NAME || "dell_nfc_system",
-  connectTimeout: 1000,
-  timeout: 800
+  connectTimeout: 1000
 };
 
-let db = mysql.createConnection(dbConfig);
+let db;
 
 const handleDisconnect = () => {
+  db = mysql.createConnection(dbConfig);
+
   db.connect((err) => {
     if (err) {
       console.log("❌ Database connection failed. Running on JSON fallback mode.");
@@ -56,9 +57,14 @@ const handleDisconnect = () => {
 
   db.on("error", (err) => {
     console.log("⚠️ Database error occurred:", err.code);
-    if (err.code === "PROTOCOL_CONNECTION_LOST" || err.code === "ECONNREFUSED") {
-      console.log("🔄 Re-instantiating fallback connection settings...");
-      db = mysql.createConnection(dbConfig);
+    // Only auto-reconnect on a genuine dropped connection.
+    // For ECONNREFUSED (DB not running) and other errors, swallow them so
+    // the process stays alive and queries fall through to the JSON store.
+    if (err.code === "PROTOCOL_CONNECTION_LOST") {
+      console.log("🔄 Connection lost — reconnecting...");
+      handleDisconnect();
+    } else {
+      console.log("📁 Staying in JSON fallback mode.");
     }
   });
 };
@@ -188,6 +194,11 @@ app.get("/dashboard", (req, res) => {
 // Dell team view — each team sees only their own leads
 app.get("/team", (req, res) => {
   res.sendFile(__dirname + "/team-dashboard.html");
+});
+
+// Analytics page
+app.get("/analytics", (req, res) => {
+  res.sendFile(__dirname + "/analytics.html");
 });
 
 // ── REGISTRATION ENDPOINT ──
@@ -353,6 +364,116 @@ app.get("/api/leads/team/:teamName", (req, res) => {
 
     console.log(`📨 Team '${teamName}' loaded ${results.length} leads.`);
     res.json(results);
+  });
+});
+
+// ── LEAD PRIORITISATION (transparent, rule-based — no AI in the maths) ──
+// Every point here is auditable. We keep AI for language (recommendations),
+// and keep scoring deterministic so it can be defended in Q&A.
+const computeLeadScore = (attendee) => {
+  let score = 0;
+  const breakdown = {};
+
+  // 1. Title seniority — decision-makers are worth more
+  const title = (attendee.jobTitle || "").toLowerCase();
+  let titlePts = 5;
+  if (/(chief|ceo|cto|cio|cfo|founder|president|owner|c-level)/.test(title)) titlePts = 35;
+  else if (/(vp|vice president|director|head)/.test(title)) titlePts = 28;
+  else if (/(manager|lead)/.test(title)) titlePts = 15;
+  breakdown.title = titlePts;
+  score += titlePts;
+
+  // 2. Company size — bigger org, bigger potential deal
+  const size = parseInt(attendee.companySize) || 0;
+  let sizePts = 8;
+  if (size >= 1000) sizePts = 30;
+  else if (size >= 200) sizePts = 18;
+  breakdown.companySize = sizePts;
+  score += sizePts;
+
+  // 3. Interest area — weight infra-scale interests higher
+  const interestPts = (attendee.interest === "Storage" || attendee.interest === "Cloud") ? 20 : 12;
+  breakdown.interest = interestPts;
+  score += interestPts;
+
+  // 4. Contact completeness — a reachable lead is an actionable lead
+  const contactPts = (attendee.email && attendee.phone) ? 10 : 0;
+  breakdown.contact = contactPts;
+  score += contactPts;
+
+  score = Math.min(score, 100);
+  let priority = "COLD";
+  if (score >= 70) priority = "HOT";
+  else if (score >= 45) priority = "WARM";
+
+  return { lead_score: score, priority, score_breakdown: breakdown };
+};
+
+// ── ANALYTICS BUILDER — line-manager view that replaces the agency's list ──
+const buildAnalytics = (rows) => {
+  const scored = rows.map(r => ({ ...r, ...computeLeadScore(r) }));
+
+  const by_priority = { HOT: 0, WARM: 0, COLD: 0 };
+  const by_team = {};
+  const by_interest = {};
+  const by_segment = {};
+  const follow_up = { ENRICHED: 0, PENDING: 0 };
+
+  scored.forEach(l => {
+    by_priority[l.priority] = (by_priority[l.priority] || 0) + 1;
+
+    const team = l.assigned_team || "Unassigned";
+    by_team[team] = (by_team[team] || 0) + 1;
+
+    const interest = l.interest || "Unknown";
+    by_interest[interest] = (by_interest[interest] || 0) + 1;
+
+    const size = parseInt(l.companySize) || 0;
+    const seg = size >= 1000 ? "Enterprise" : size >= 200 ? "Mid-Market" : "Small Business";
+    by_segment[seg] = (by_segment[seg] || 0) + 1;
+
+    const rec = l.action_recommendation;
+    if (rec && rec !== "Processing...") follow_up.ENRICHED++;
+    else follow_up.PENDING++;
+  });
+
+  const total = scored.length;
+  const avg_score = total
+    ? Math.round(scored.reduce((s, l) => s + l.lead_score, 0) / total)
+    : 0;
+
+  const hot_leads = scored
+    .filter(l => l.priority === "HOT")
+    .sort((a, b) => b.lead_score - a.lead_score)
+    .slice(0, 10);
+
+  return { total_leads: total, avg_score, by_priority, by_team, by_interest, by_segment, follow_up, hot_leads };
+};
+
+// ── ANALYTICS API — MySQL first, JSON fallback (stays offline-tolerant) ──
+app.get("/api/analytics", (req, res) => {
+  let hasResponded = false;
+
+  const respondFrom = (rows) => {
+    if (hasResponded) return;
+    hasResponded = true;
+    res.json(buildAnalytics(rows));
+  };
+
+  const fallbackTimeout = setTimeout(() => {
+    console.log("⏱️ MySQL timed out. Building analytics from JSON fallback.");
+    respondFrom(getAttendees());
+  }, 800);
+
+  db.query("SELECT * FROM attendees ORDER BY created_at DESC", (err, results) => {
+    clearTimeout(fallbackTimeout);
+    if (hasResponded) return;
+    if (err) {
+      console.log("⚠️ MySQL error. Analytics from JSON instead:", err.message);
+      return respondFrom(getAttendees());
+    }
+    console.log(`📈 Analytics computed from ${results.length} leads.`);
+    respondFrom(results);
   });
 });
 

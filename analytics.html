@@ -231,11 +231,7 @@
         <div id="segmentBars"><div class="empty-note">Loading…</div></div>
       </div>
       <div class="panel">
-        <div class="panel-title">Leads by Territory</div>
-        <div id="territoryBars"><div class="empty-note">Loading…</div></div>
-      </div>
-      <div class="panel">
-        <div class="panel-title">Follow-up Progress</div>
+        <div class="panel-title">AI Enrichment Status</div>
         <div id="followUpBars"><div class="empty-note">Loading…</div></div>
       </div>
     </div>
@@ -343,8 +339,7 @@
         renderBars("teamBars", data.by_team);
         renderBars("interestBars", data.by_interest);
         renderBars("segmentBars", data.by_segment);
-        renderBars("territoryBars", data.by_territory);
-        renderBars("followUpBars", data.follow_up, { ACTIONED: "cold", PENDING: "warm" });
+        renderBars("followUpBars", data.follow_up, { ENRICHED: "cold", PENDING: "warm" });
         renderHotLeads(data.hot_leads);
 
         document.getElementById("lastUpdated").textContent =
