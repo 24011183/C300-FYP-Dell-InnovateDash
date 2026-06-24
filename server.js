@@ -184,10 +184,7 @@ app.get("/dashboard", (req, res) => {
 });
 
 // Dell team view — each team sees only their own leads
-// Analytics — line-manager overview
-app.get("/analytics", (req, res) => {
-  res.sendFile(__dirname + "/analytics.html");
-});
+
 
 // ── REGISTRATION ENDPOINT ──
 app.post("/register", async (req, res) => {
@@ -293,7 +290,7 @@ const enrichLeadWithAI = async (attendee) => {
 };
 
 // ── LIGHTWEIGHT API GATE ──
-// If API_KEY is set in the environment, the /api/leads* and /api/analytics
+// If API_KEY is set in the environment, the /api/leads* endpoints
 // endpoints require a matching x-api-key header (or ?key=). If API_KEY is NOT
 // set, the gate is open so nothing breaks by default.
 // Note: this is demonstration-grade. Production would use proper auth
@@ -387,58 +384,9 @@ const computeLeadScore = (attendee) => {
   return { lead_score: score, priority, score_breakdown: breakdown };
 };
 
-// ── ANALYTICS BUILDER — line-manager view that replaces the agency's list ──
-const buildAnalytics = (rows) => {
-  const scored = rows.map(r => ({ ...r, ...computeLeadScore(r) }));
 
-  const by_priority = { HOT: 0, WARM: 0, COLD: 0 };
-  const by_team = {};
-  const by_interest = {};
-  const by_segment = {};
-  const follow_up = { ENRICHED: 0, PENDING: 0 };
 
-  scored.forEach(l => {
-    by_priority[l.priority] = (by_priority[l.priority] || 0) + 1;
 
-    const team = l.assigned_team || "Unassigned";
-    by_team[team] = (by_team[team] || 0) + 1;
-
-    const interest = l.interest || "Unknown";
-    by_interest[interest] = (by_interest[interest] || 0) + 1;
-
-    const size = parseInt(l.companySize) || 0;
-    const seg = size >= 1000 ? "Enterprise" : size >= 200 ? "Mid-Market" : "Small Business";
-    by_segment[seg] = (by_segment[seg] || 0) + 1;
-
-    const rec = l.action_recommendation;
-    if (rec && rec !== "Processing...") follow_up.ENRICHED++;
-    else follow_up.PENDING++;
-  });
-
-  const total = scored.length;
-  const avg_score = total
-    ? Math.round(scored.reduce((s, l) => s + l.lead_score, 0) / total)
-    : 0;
-
-  const hot_leads = scored
-    .filter(l => l.priority === "HOT")
-    .sort((a, b) => b.lead_score - a.lead_score)
-    .slice(0, 10);
-
-  return { total_leads: total, avg_score, by_priority, by_team, by_interest, by_segment, follow_up, hot_leads };
-};
-
-// ── ANALYTICS API — MySQL only ──
-app.get("/api/analytics", requireApiKey, (req, res) => {
-  db.query("SELECT * FROM attendees ORDER BY created_at DESC", (err, results) => {
-    if (err) {
-      console.error("❌ Analytics MySQL error:", err.message);
-      return res.status(503).json({ error: "Database unavailable." });
-    }
-    console.log(`📈 Analytics computed from ${results.length} leads.`);
-    res.json(buildAnalytics(results));
-  });
-});
 
 // ── CSV EXPORT — replaces the agency's post-event consolidated list ──
 // Converts rows to safe CSV (quotes, commas, newlines escaped) and serves
