@@ -545,8 +545,6 @@
     const rep    = document.getElementById("fuRep").value.trim();
     if (!action) { alert("Enter what action was taken."); return; }
     try {
-      const res = await apiFetch(`/api/leads/${token}/followup`);
-      // Use fetch directly for POST with body
       const r = await fetch(`/api/leads/${token}/followup`, {
         method: "POST",
         headers: {
@@ -555,7 +553,8 @@
         },
         body: JSON.stringify({ action_taken: action, notes, rep_name: rep })
       });
-      await r.json();
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.message || r.status);
       alert("✅ Follow-up logged.");
       document.getElementById("fuAction").value = "";
       document.getElementById("fuNotes").value  = "";
