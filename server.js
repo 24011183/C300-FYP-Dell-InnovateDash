@@ -1,6 +1,5 @@
 const mysql = require("mysql2");
 const express = require("express");
-const fs = require("fs");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 require("dotenv").config();
 
@@ -16,7 +15,7 @@ const dbConfig = {
   user: process.env.DB_USER || "root",
   password: process.env.DB_PASSWORD || "Password123!",
   database: process.env.DB_NAME || "dell_nfc_system",
-  connectTimeout: 1000
+  connectTimeout: 10000
 };
 
 let db;
@@ -26,7 +25,7 @@ const handleDisconnect = () => {
 
   db.connect((err) => {
     if (err) {
-      console.log("❌ Database connection failed. Running on JSON fallback mode.");
+      console.error("❌ Database connection failed:", err.message);
     } else {
       console.log("✅ Connected to MySQL successfully (Target: attendees table).");
       // Auto-create table if it doesn't exist
@@ -41,11 +40,15 @@ const handleDisconnect = () => {
           email VARCHAR(255) DEFAULT '',
           phone VARCHAR(50) DEFAULT '',
           interest TEXT NOT NULL,
-          assigned_team VARCHAR(100) DEFAULT 'General Sales Hub',
+          currentChallenge TEXT,
+          pdpaConsent TINYINT(1) DEFAULT 0,
+          assigned_team VARCHAR(100) DEFAULT 'Client Solutions Group (CSG)',
           action_recommendation TEXT,
           routing_status VARCHAR(50) DEFAULT 'ROUTED_AUTOMATICALLY',
+          followup_note TEXT,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          INDEX idx_assigned_team (assigned_team)
+          INDEX idx_assigned_team (assigned_team),
+          INDEX idx_token (token)
         )
       `;
       db.query(createTable, (err) => {
@@ -57,14 +60,11 @@ const handleDisconnect = () => {
 
   db.on("error", (err) => {
     console.log("⚠️ Database error occurred:", err.code);
-    // Only auto-reconnect on a genuine dropped connection.
-    // For ECONNREFUSED (DB not running) and other errors, swallow them so
-    // the process stays alive and queries fall through to the JSON store.
     if (err.code === "PROTOCOL_CONNECTION_LOST") {
       console.log("🔄 Connection lost — reconnecting...");
       handleDisconnect();
     } else {
-      console.log("📁 Staying in JSON fallback mode.");
+      console.error("⚠️ Database error:", err.code);
     }
   });
 };
@@ -75,36 +75,22 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
 
-// ── JSON FALLBACK HELPERS ──
-const getAttendees = () => {
-  try {
-    if (!fs.existsSync("attendees.json")) {
-      fs.writeFileSync("attendees.json", JSON.stringify([], null, 2));
-      return [];
-    }
-    const data = fs.readFileSync("attendees.json");
-    return JSON.parse(data);
-  } catch (err) {
-    return [];
-  }
-};
-
-const saveAttendees = (data) => {
-  fs.writeFileSync("attendees.json", JSON.stringify(data, null, 2));
-};
-
-// ── MEMBER 4: AI-POWERED ROUTING & RECOMMENDATION ENGINE ──
-const analyzeLead = async (attendee) => {
-
-  // Step 1: Rule-based routing — assign Dell team based on interest
+// ── TEAM ROUTING — maps interest area to Dell team ──
+const getTeamRoute = (interest) => {
   const teamRoutes = {
     "AI PCs": "Client Solutions Group (CSG)",
     "Storage": "Infrastructure Solutions Group (ISG)",
     "Cloud": "APEX & Cloud Services",
     "Consultancy": "Professional Services"
   };
+  return teamRoutes[interest] || "Client Solutions Group (CSG)";
+};
 
-  const assigned_team = teamRoutes[attendee.interest] || "General Sales";
+// ── AI-POWERED RECOMMENDATION ENGINE ──
+const analyzeLead = async (attendee) => {
+
+  // Step 1: Rule-based routing — assign Dell team based on interest
+  const assigned_team = getTeamRoute(attendee.interest);
 
   // Step 2: Determine company size tier for smarter recommendations
   let companyTier = "small business";
@@ -112,6 +98,10 @@ const analyzeLead = async (attendee) => {
   else if (attendee.companySize >= 200) companyTier = "mid-market company";
 
   // Step 3: Build Gemini prompt
+  const challengeLine = attendee.currentChallenge
+    ? `- Current Challenge: ${attendee.currentChallenge}`
+    : "";
+
   const prompt = `
 You are a Dell Technologies sales assistant helping route event leads at the Dell Technologies Forum Singapore.
 
@@ -123,6 +113,7 @@ Their profile:
 - Job Title: ${attendee.jobTitle}
 - Interest Area: ${attendee.interest}
 - Assigned Dell Team: ${assigned_team}
+${challengeLine}
 
 Dell product context by interest area:
 - AI PCs: Dell Latitude series with Intel Core Ultra, Dell Optimizer AI software, Dell Precision workstations
@@ -136,6 +127,7 @@ that the ${assigned_team} team should take within 48 hours after the event.
 Rules:
 - Reference specific Dell products or services relevant to their interest area
 - Be specific to their job title and company size
+- If a current challenge is provided, address it directly in the recommendation
 - Recommend a real action (e.g. book a call, send a specific resource, invite to a specific event)
 - Consider that a ${companyTier} with a ${attendee.jobTitle} has different priorities than others
 - Do NOT use vague responses like "send newsletter" or "track email"
@@ -144,8 +136,8 @@ Rules:
 `;
 
   try {
-    // Step 4: Call Gemini 3.5 Flash
-    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
+    // Step 4: Call Gemini 2.5 Flash
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
     const recommendation = result.response.text().trim();
 
@@ -186,185 +178,161 @@ app.get("/", (req, res) => {
   res.sendFile(__dirname + "/attendee.html");
 });
 
-// Fiona's rep dashboard
+// Rep dashboard — all leads
 app.get("/dashboard", (req, res) => {
   res.sendFile(__dirname + "/dashboard.html");
 });
 
 // Dell team view — each team sees only their own leads
-app.get("/team", (req, res) => {
-  res.sendFile(__dirname + "/team-dashboard.html");
-});
-
-// Analytics page
+// Analytics — line-manager overview
 app.get("/analytics", (req, res) => {
   res.sendFile(__dirname + "/analytics.html");
 });
 
 // ── REGISTRATION ENDPOINT ──
 app.post("/register", async (req, res) => {
-  const attendees = getAttendees();
+  // ── INPUT VALIDATION ──
+  const name    = (req.body.name    || "").trim();
+  const company = (req.body.company || "").trim();
+  const interest = (req.body.interest || "").trim();
+  const email   = (req.body.email   || "").trim();
+
+  if (!name || !company || !interest) {
+    return res.status(400).json({ message: "Name, company and interest area are required." });
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ message: "Please enter a valid email address." });
+  }
+  const pdpaConsent = req.body.pdpaConsent === "true" || req.body.pdpaConsent === true;
+  if (!pdpaConsent) {
+    return res.status(400).json({ message: "PDPA consent is required before registration can proceed." });
+  }
+
+  // ── DUPLICATE PREVENTION (MySQL) ──
+  // Duplicate = same person expressing the same interest at the same booth.
+  // Same person at two different booths = two valid leads (different Dell teams).
+  if (email) {
+    const dupCheck = await new Promise((resolve) => {
+      db.query(
+        "SELECT token, name FROM attendees WHERE email = ? AND interest = ? LIMIT 1",
+        [email, interest],
+        (err, rows) => { resolve(err ? null : rows); }
+      );
+    });
+    if (dupCheck && dupCheck.length > 0) {
+      const existing = dupCheck[0];
+      console.log(`🔁 Duplicate lead skipped for ${email} + ${interest}`);
+      return res.json({
+        message: `${existing.name} has already been registered for ${interest}. Skipped duplicate.`,
+        duplicate: true,
+        lead: existing
+      });
+    }
+  }
 
   const rawAttendee = {
     id: "USR" + Date.now(),
-    name: req.body.name,
-    company: req.body.company,
+    name,
+    company,
     companySize: parseInt(req.body.companySize) || 0,
-    jobTitle: req.body.jobTitle || "",
-    email: req.body.email || "",
-    phone: req.body.phone || "",
-    interest: req.body.interest,
-    assigned_team: getTeamRoute(req.body.interest),
+    jobTitle: (req.body.jobTitle || "").trim(),
+    email,
+    phone: (req.body.phone || "").trim(),
+    interest,
+    currentChallenge: (req.body.currentChallenge || "").trim(),
+    pdpaConsent: true,
+    assigned_team: getTeamRoute(interest),
     action_recommendation: "Processing...",
     processed_at: new Date().toLocaleString()
   };
 
-  // Save to JSON immediately
-  attendees.push(rawAttendee);
-  saveAttendees(attendees);
-  console.log(`💾 Saved ${rawAttendee.name} to local JSON file.`);
-
-  // Insert to MySQL immediately
+  // ── INSERT TO MySQL ──
   const query = `
-    INSERT INTO attendees 
-    (token, name, company, companySize, jobTitle, email, phone, interest, assigned_team, action_recommendation) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO attendees
+    (token, name, company, companySize, jobTitle, email, phone, interest, currentChallenge, pdpaConsent, assigned_team, action_recommendation)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
-
   const values = [
-    rawAttendee.id,
-    rawAttendee.name,
-    rawAttendee.company,
-    rawAttendee.companySize,
-    rawAttendee.jobTitle,
-    rawAttendee.email,
-    rawAttendee.phone,
-    rawAttendee.interest,
-    rawAttendee.assigned_team,
-    rawAttendee.action_recommendation
+    rawAttendee.id, rawAttendee.name, rawAttendee.company,
+    rawAttendee.companySize, rawAttendee.jobTitle, rawAttendee.email,
+    rawAttendee.phone, rawAttendee.interest, rawAttendee.currentChallenge,
+    1, rawAttendee.assigned_team, rawAttendee.action_recommendation
   ];
 
-  db.query(query, values, (err, result) => {
+  db.query(query, values, (err) => {
     if (err) {
       console.error("❌ MySQL Insert Failed:", err.message);
-    } else {
-      console.log("✅ Successfully synced lead to MySQL table!");
+      // If DB is down, tell the client — their localStorage queue will retry
+      return res.status(503).json({ message: "Database unavailable — please retry when connectivity is restored." });
     }
+    console.log(`✅ Lead saved to MySQL: ${rawAttendee.name}`);
+    // Respond immediately — don't wait for Gemini
+    res.json({ message: "Registration successful!", lead: rawAttendee });
+    // Enrich in background after response is sent
+    enrichLeadWithAI(rawAttendee);
   });
-
-  // Respond immediately — don't wait for Gemini
-  res.json({ message: "Registration successful!", lead: rawAttendee });
-
-  // Call Gemini in background and update the recommendation after
-  enrichLeadWithAI(rawAttendee);
 });
 
-// ── HELPER: Get team route without Gemini ──
-const getTeamRoute = (interest) => {
-  const teamRoutes = {
-    "AI PCs": "Client Solutions Group (CSG)",
-    "Storage": "Infrastructure Solutions Group (ISG)",
-    "Cloud": "APEX & Cloud Services",
-    "Consultancy": "Professional Services"
-  };
-  return teamRoutes[interest] || "General Sales";
-};
+
 
 // ── BACKGROUND AI ENRICHMENT ──
 const enrichLeadWithAI = async (attendee) => {
   try {
     const enriched = await analyzeLead(attendee);
-
-    // Update JSON
-    const attendees = getAttendees();
-    const idx = attendees.findIndex(a => a.id === attendee.id);
-    if (idx !== -1) {
-      attendees[idx].action_recommendation = enriched.action_recommendation;
-      saveAttendees(attendees);
-    }
-
-    // Update MySQL
-    const updateQuery = `
-      UPDATE attendees 
-      SET action_recommendation = ? 
-      WHERE token = ?
-    `;
-    db.query(updateQuery, [enriched.action_recommendation, attendee.id], (err) => {
-      if (err) {
-        console.error("❌ MySQL Update Failed:", err.message);
-      } else {
-        console.log(`✅ AI recommendation updated for ${attendee.name}`);
+    db.query(
+      "UPDATE attendees SET action_recommendation = ? WHERE token = ?",
+      [enriched.action_recommendation, attendee.id],
+      (err) => {
+        if (err) console.error("❌ AI enrichment MySQL update failed:", err.message);
+        else console.log(`✅ AI recommendation updated for ${attendee.name}`);
       }
-    });
-
+    );
   } catch (err) {
     console.error("❌ Background AI enrichment failed:", err.message);
   }
 };
 
-// ── FIONA'S DASHBOARD API — all leads ──
-app.get("/api/leads", (req, res) => {
-  let hasResponded = false;
+// ── LIGHTWEIGHT API GATE ──
+// If API_KEY is set in the environment, the /api/leads* and /api/analytics
+// endpoints require a matching x-api-key header (or ?key=). If API_KEY is NOT
+// set, the gate is open so nothing breaks by default.
+// Note: this is demonstration-grade. Production would use proper auth
+// (JWT/OAuth) with secrets kept server-side, not a shared key.
+const requireApiKey = (req, res, next) => {
+  const configured = process.env.API_KEY;
+  if (!configured) return next(); // gate disabled
+  const provided = req.header("x-api-key") || req.query.key;
+  if (provided && provided === configured) return next();
+  return res.status(401).json({ message: "Unauthorized: missing or invalid API key." });
+};
 
-  const fallbackTimeout = setTimeout(() => {
-    if (!hasResponded) {
-      hasResponded = true;
-      console.log("⏱️ MySQL timed out. Loading from JSON fallback.");
-      const attendees = getAttendees();
-      res.json(attendees);
-    }
-  }, 800);
-
-  const query = "SELECT * FROM attendees ORDER BY created_at DESC";
-
-  db.query(query, (err, results) => {
-    if (hasResponded) return;
-    hasResponded = true;
-    clearTimeout(fallbackTimeout);
-
+// ── DASHBOARD API — all leads ──
+app.get("/api/leads", requireApiKey, (req, res) => {
+  db.query("SELECT * FROM attendees ORDER BY created_at DESC", (err, results) => {
     if (err) {
-      console.log("⚠️ MySQL error. Fetching from JSON instead:", err.message);
-      const attendees = getAttendees();
-      return res.json(attendees);
+      console.error("❌ /api/leads MySQL error:", err.message);
+      return res.status(503).json({ error: "Database unavailable. Please try again shortly." });
     }
-
     console.log(`📊 Dashboard loaded ${results.length} leads from MySQL.`);
     res.json(results);
   });
 });
 
 // ── TEAM API — filtered leads by assigned team ──
-app.get("/api/leads/team/:teamName", (req, res) => {
+app.get("/api/leads/team/:teamName", requireApiKey, (req, res) => {
   const teamName = decodeURIComponent(req.params.teamName);
-  let hasResponded = false;
-
-  const fallbackTimeout = setTimeout(() => {
-    if (!hasResponded) {
-      hasResponded = true;
-      console.log("⏱️ MySQL timed out. Loading from JSON fallback.");
-      const attendees = getAttendees();
-      const filtered = attendees.filter(a => a.assigned_team === teamName);
-      res.json(filtered);
+  db.query(
+    "SELECT * FROM attendees WHERE assigned_team = ? ORDER BY created_at DESC",
+    [teamName],
+    (err, results) => {
+      if (err) {
+        console.error("❌ /api/leads/team MySQL error:", err.message);
+        return res.status(503).json({ error: "Database unavailable. Please try again shortly." });
+      }
+      console.log(`📨 Team '${teamName}' loaded ${results.length} leads.`);
+      res.json(results);
     }
-  }, 800);
-
-  const query = "SELECT * FROM attendees WHERE assigned_team = ? ORDER BY created_at DESC";
-
-  db.query(query, [teamName], (err, results) => {
-    if (hasResponded) return;
-    hasResponded = true;
-    clearTimeout(fallbackTimeout);
-
-    if (err) {
-      console.log("⚠️ MySQL error. Fetching from JSON instead:", err.message);
-      const attendees = getAttendees();
-      const filtered = attendees.filter(a => a.assigned_team === teamName);
-      return res.json(filtered);
-    }
-
-    console.log(`📨 Team '${teamName}' loaded ${results.length} leads.`);
-    res.json(results);
-  });
+  );
 });
 
 // ── LEAD PRIORITISATION (transparent, rule-based — no AI in the maths) ──
@@ -374,37 +342,47 @@ const computeLeadScore = (attendee) => {
   let score = 0;
   const breakdown = {};
 
-// 1. Title seniority — decision-makers are worth more
-  const title = (attendee.jobTitle || "").toLowerCase();
-  let titlePts = 10; // default bumped from 5 so unknown titles aren't punished too hard
-  if (/(chief|ceo|cto|cio|cfo|coo|founder|co-founder|president|owner|partner|c-level|managing director)/.test(title)) titlePts = 35;
-  else if (/(vp|vice president|director|head|principal|executive|officer|gm|general manager)/.test(title)) titlePts = 28;
-  else if (/(manager|lead|supervisor|architect|senior|specialist)/.test(title)) titlePts = 15;
-  breakdown.title = titlePts;
-  score += titlePts;
-
-  // 2. Company size — bigger org, bigger potential deal
+  // ── FACTOR 1: Company size (50 pts max) ──
+  // Larger organisations represent larger potential deal value for Dell.
+  // Thresholds align with Dell's own SMB / mid-market / enterprise segmentation.
   const size = parseInt(attendee.companySize) || 0;
-  let sizePts = 8;
-  if (size >= 1000) sizePts = 30;
-  else if (size >= 200) sizePts = 18;
+  let sizePts = 0;
+  if      (size >= 1000) sizePts = 50;  // Enterprise
+  else if (size >= 200)  sizePts = 30;  // Mid-market
+  else if (size >= 50)   sizePts = 15;  // Small business
+  else                   sizePts = 5;   // Micro / startup
   breakdown.companySize = sizePts;
   score += sizePts;
 
-  // 3. Interest area — weight infra-scale interests higher
-  const interestPts = (attendee.interest === "Storage" || attendee.interest === "Cloud") ? 20 : 12;
-  breakdown.interest = interestPts;
-  score += interestPts;
+  // ── FACTOR 2: Job title seniority (30 pts max) ──
+  // Decision-maker titles mean the lead can approve a purchase directly.
+  // Uses keyword matching on free-text field — no enumeration needed.
+  const title = (attendee.jobTitle || "").toLowerCase();
+  let titlePts = 0;
+  if (/ceo|cto|cio|cfo|president|owner|founder|managing director|md/.test(title)) {
+    titlePts = 30;   // C-suite / owner — final decision maker
+  } else if (/vp|vice president|director|head of|chief/.test(title)) {
+    titlePts = 20;   // Senior influencer — strong input on purchase
+  } else if (/manager|lead|senior|principal|architect/.test(title)) {
+    titlePts = 10;   // Mid-level — evaluator, not final approver
+  }
+  breakdown.jobTitle = titlePts;
+  score += titlePts;
 
-  // 4. Contact completeness — a reachable lead is an actionable lead
-  const contactPts = (attendee.email && attendee.phone) ? 10 : 0;
-  breakdown.contact = contactPts;
-  score += contactPts;
+  // ── FACTOR 3: Current challenge captured (20 pts) ──
+  // If a rep took the time to note the attendee's challenge, it means a real
+  // conversation happened — that is a warmer lead than a badge scan alone.
+  const challengePts = (attendee.currentChallenge && attendee.currentChallenge.trim()) ? 20 : 0;
+  breakdown.currentChallenge = challengePts;
+  score += challengePts;
 
   score = Math.min(score, 100);
+
+  // Priority thresholds — calibrated so a mid-market Director with a challenge
+  // recorded hits HOT, while a micro-business with no context stays COLD.
   let priority = "COLD";
-  if (score >= 70) priority = "HOT";
-  else if (score >= 45) priority = "WARM";
+  if      (score >= 60) priority = "HOT";
+  else if (score >= 35) priority = "WARM";
 
   return { lead_score: score, priority, score_breakdown: breakdown };
 };
@@ -450,30 +428,169 @@ const buildAnalytics = (rows) => {
   return { total_leads: total, avg_score, by_priority, by_team, by_interest, by_segment, follow_up, hot_leads };
 };
 
-// ── ANALYTICS API — MySQL first, JSON fallback (stays offline-tolerant) ──
-app.get("/api/analytics", (req, res) => {
-  let hasResponded = false;
-
-  const respondFrom = (rows) => {
-    if (hasResponded) return;
-    hasResponded = true;
-    res.json(buildAnalytics(rows));
-  };
-
-  const fallbackTimeout = setTimeout(() => {
-    console.log("⏱️ MySQL timed out. Building analytics from JSON fallback.");
-    respondFrom(getAttendees());
-  }, 800);
-
+// ── ANALYTICS API — MySQL only ──
+app.get("/api/analytics", requireApiKey, (req, res) => {
   db.query("SELECT * FROM attendees ORDER BY created_at DESC", (err, results) => {
-    clearTimeout(fallbackTimeout);
-    if (hasResponded) return;
     if (err) {
-      console.log("⚠️ MySQL error. Analytics from JSON instead:", err.message);
-      return respondFrom(getAttendees());
+      console.error("❌ Analytics MySQL error:", err.message);
+      return res.status(503).json({ error: "Database unavailable." });
     }
     console.log(`📈 Analytics computed from ${results.length} leads.`);
-    respondFrom(results);
+    res.json(buildAnalytics(results));
+  });
+});
+
+// ── CSV EXPORT — replaces the agency's post-event consolidated list ──
+// Converts rows to safe CSV (quotes, commas, newlines escaped) and serves
+// it as a download. Optional ?team= query param filters to one team.
+// and API gate as the other data routes.
+const toCsv = (rows) => {
+  const cols = ["name", "company", "companySize", "jobTitle", "email",
+                "phone", "interest", "currentChallenge", "pdpaConsent",
+                "assigned_team", "lead_score", "priority",
+                "routing_status", "followup_note",
+                "action_recommendation", "processed_at"];
+  const esc = (v) => {
+    const s = String(v == null ? "" : v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const header = cols.join(",");
+  const body = rows.map(r => {
+    const scored = { ...r, ...computeLeadScore(r) };
+    return cols.map(c => esc(scored[c])).join(",");
+  }).join("\n");
+  return header + "\n" + body;
+};
+
+app.get("/api/export", requireApiKey, (req, res) => {
+  const team = req.query.team ? decodeURIComponent(req.query.team) : null;
+  db.query("SELECT * FROM attendees ORDER BY created_at DESC", (err, results) => {
+    if (err) {
+      console.error("❌ Export MySQL error:", err.message);
+      return res.status(503).json({ error: "Database unavailable." });
+    }
+    const rows = team ? results.filter(r => r.assigned_team === team) : results;
+    const csv = toCsv(rows);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const fname = team
+      ? `dell-leads-${team.replace(/[^a-z0-9]/gi, "_")}-${stamp}.csv`
+      : `dell-leads-all-${stamp}.csv`;
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="${fname}"`);
+    console.log(`⬇️  Exported ${rows.length} leads as CSV.`);
+    res.send(csv);
+  });
+});
+
+// ── LEAD LIFECYCLE UPDATE — rep can update status/notes after the event ──
+app.patch("/api/leads/:id", requireApiKey, (req, res) => {
+  const token = req.params.id;
+  const allowed = ["routing_status", "action_recommendation", "followup_note"];
+  const updates = {};
+  allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
+
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ message: "No valid fields to update." });
+  }
+
+  // Update MySQL
+  const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(", ");
+  const vals = [...Object.values(updates), token];
+  db.query(`UPDATE attendees SET ${setClauses} WHERE token = ?`, vals, (err) => {
+    if (err) {
+      console.error("❌ MySQL lifecycle update failed:", err.message);
+      return res.status(503).json({ message: "Database update failed." });
+    }
+    console.log(`✅ Lead ${token} updated: ${JSON.stringify(updates)}`);
+    res.json({ message: "Lead updated.", token, updates });
+  });
+});
+
+// ── FOLLOW-UP LOG — record that a follow-up action was taken ──
+app.post("/api/leads/:id/followup", requireApiKey, (req, res) => {
+  const token = req.params.id;
+  const { action_taken, notes, rep_name } = req.body;
+
+  if (!action_taken) {
+    return res.status(400).json({ message: "action_taken is required." });
+  }
+
+  const logEntry = {
+    token,
+    action_taken,
+    notes: notes || "",
+    rep_name: rep_name || "Unknown",
+    logged_at: new Date().toLocaleString()
+  };
+
+  console.log(`📝 Follow-up logged for lead ${token}:`, logEntry);
+
+  // Update MySQL
+  const note = `[${logEntry.logged_at}] ${action_taken} by ${rep_name || "Unknown"}. ${notes || ""}`;
+  db.query(
+    "UPDATE attendees SET followup_note = ?, routing_status = 'FOLLOWED_UP' WHERE token = ?",
+    [note, token],
+    (err) => {
+      if (err) {
+        console.error("❌ MySQL follow-up update failed:", err.message);
+        return res.status(503).json({ message: "Database update failed." });
+      }
+      res.json({ message: "Follow-up logged successfully.", log: logEntry });
+    }
+  );
+});
+
+// ── DELIVERY WEBHOOK — future CRM/Salesforce integration endpoint ──
+// Receives outbound delivery confirmations from downstream systems.
+// Verifies HMAC signature (if WEBHOOK_SECRET is set) for security.
+app.post("/api/webhook/delivery", (req, res) => {
+  const secret = process.env.WEBHOOK_SECRET;
+
+  if (secret) {
+    const crypto = require("crypto");
+    const sig = req.header("x-webhook-signature") || "";
+    const expected = crypto
+      .createHmac("sha256", secret)
+      .update(JSON.stringify(req.body))
+      .digest("hex");
+    if (sig !== expected) {
+      console.warn("⚠️ Webhook signature mismatch — rejected.");
+      return res.status(401).json({ message: "Invalid webhook signature." });
+    }
+  }
+
+  const { event, lead_id, crm_id, status, timestamp } = req.body;
+  console.log(`🔔 Webhook received: event=${event}, lead=${lead_id}, status=${status}`);
+
+  if (lead_id && status) {
+    const note = `CRM delivery: ${event || "update"} → ${status} at ${timestamp || new Date().toISOString()}`;
+    if (crm_id) {
+      db.query(
+        "UPDATE attendees SET routing_status = ?, followup_note = ? WHERE token = ?",
+        [status, note, lead_id],
+        (err) => {
+          if (err) console.error("❌ Webhook MySQL update failed:", err.message);
+          else console.log(`✅ Webhook updated lead ${lead_id} to status ${status}`);
+        }
+      );
+
+    }
+  }
+
+  res.json({ message: "Webhook received.", received: req.body });
+});
+
+// ── HEALTH CHECK — for Docker healthcheck and cloud-native monitoring ──
+app.get("/api/health", (req, res) => {
+  db.query("SELECT 1", (err) => {
+    if (err) {
+      return res.status(503).json({
+        status: "degraded",
+        db: "unreachable",
+        message: err.message
+      });
+    }
+    res.json({ status: "ok", db: "connected", timestamp: new Date().toISOString() });
   });
 });
 
@@ -481,5 +598,5 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
   console.log(`📋 Attendee registration: http://localhost:${PORT}/`);
   console.log(`📊 Rep dashboard:         http://localhost:${PORT}/dashboard`);
-  console.log(`👥 Team view:             http://localhost:${PORT}/team`);
+
 });

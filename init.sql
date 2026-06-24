@@ -8,9 +8,12 @@ CREATE TABLE IF NOT EXISTS attendees (
     email VARCHAR(255) DEFAULT '',
     phone VARCHAR(50) DEFAULT '',
     interest TEXT NOT NULL,
-    assigned_team VARCHAR(100) DEFAULT 'General Sales Hub',
+    currentChallenge TEXT,
+    pdpaConsent TINYINT(1) DEFAULT 0,
+    assigned_team VARCHAR(100) DEFAULT 'Client Solutions Group (CSG)',
     action_recommendation TEXT,
     routing_status VARCHAR(50) DEFAULT 'ROUTED_AUTOMATICALLY',
+    followup_note TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_assigned_team (assigned_team),
     INDEX idx_token (token)

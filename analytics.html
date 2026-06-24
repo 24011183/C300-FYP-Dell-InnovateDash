@@ -204,11 +204,14 @@
 
   <div class="brand-bar">
     <div class="logo">DELL Technologies</div>
-    <a href="/team">← Back to Team View</a>
+    <a href="/dashboard">← Back to Dashboard</a>
   </div>
 
   <div class="main">
-    <div class="page-title">📈 Event Lead Analytics</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div class="page-title">📈 Event Lead Analytics</div>
+      <button onclick="exportCsv()" style="background:#0076ce;color:#fff;border:none;padding:9px 18px;border-radius:4px;font-weight:600;font-size:13px;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;">⬇ Export CSV</button>
+    </div>
     <div class="page-subtitle">Line-manager view — replaces the agency's post-event consolidated list with live routing, segment and follow-up visibility</div>
 
     <div class="kpi-row" id="kpiRow"></div>
@@ -328,9 +331,45 @@
       `;
     }
 
+    // Sends the saved access key if we have one; if the server challenges
+    // with 401, prompt once and retry. When the gate is off, this behaves
+    // exactly like a normal fetch (no prompt).
+    async function apiFetch(url) {
+      const headers = {};
+      const k = sessionStorage.getItem("apiKey");
+      if (k) headers["x-api-key"] = k;
+      let res = await fetch(url, { headers });
+      if (res.status === 401) {
+        const entered = prompt("Access key required to view leads:") || "";
+        sessionStorage.setItem("apiKey", entered);
+        res = await fetch(url, { headers: { "x-api-key": entered } });
+      }
+      return res;
+    }
+
+    // Download all leads as a CSV — the on-demand replacement for the
+    // agency's post-event consolidated list.
+    async function exportCsv() {
+      try {
+        const res = await apiFetch("/api/export");
+        if (!res.ok) throw new Error("Export failed: " + res.status);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "dell-leads.csv";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert("Could not export: " + err.message);
+      }
+    }
+
     async function loadAnalytics() {
       try {
-        const res = await fetch("/api/analytics");
+        const res = await apiFetch("/api/analytics");
         if (!res.ok) throw new Error("Server error: " + res.status);
         const data = await res.json();
 
