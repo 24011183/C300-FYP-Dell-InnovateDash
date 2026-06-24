@@ -7,14 +7,15 @@ A cloud-native event lead capture, enrichment, and routing system built for the 
 
 ## Problem Statement
 
-Dell booth representatives currently share a single mobile device running a third-party lead-capture tool managed by an external events agency. Leads are not automatically segmented or routed, and reps cannot record detailed notes in the fast-paced booth environment.
+Dell booth representatives currently share a single mobile device running a third-party lead-capture tool managed by an external events agency. Leads are not automatically segmented or routed to the right sales teams, reps have no time to record detailed notes, and the agency only sends a consolidated spreadsheet days after the event — by then leads are cold.
 
 **QuickTap Connect** solves this by providing:
-- A self-service attendee registration form accessible from any device
-- AI-powered lead enrichment and team routing (Gemini 2.5 Flash)
-- Real-time team and line-manager dashboards
-- Offline-tolerant operation with automatic sync
-- PDPA-compliant personal data handling
+- A self-service attendee registration form accessible from any device via QR code
+- Automatic lead routing to the correct Dell sales team based on interest area
+- AI-powered follow-up recommendations using Gemini 2.5 Flash
+- Real-time lead dashboard with scoring, filtering, and follow-up logging
+- Offline-tolerant operation with automatic sync when connectivity is restored
+- PDPA-compliant personal data handling — no plaintext files, consent mandatory
 
 ---
 
@@ -22,91 +23,125 @@ Dell booth representatives currently share a single mobile device running a thir
 
 | Member | Role |
 |--------|------|
-| Wee Teck | AI routing, lead scoring, analytics, follow-up logging, Docker |
-| Haad | (your role) |
+| Wee Teck | Backend, AI routing, lead scoring, follow-up logging, Docker |
+| Haad | Attendee registration form |
 | Fiona | Rep dashboard |
-| Alicia | (your role) |
+| Alicia | NFC integration and backend support |
 
 ---
 
 ## Architecture
 
 ```
-Browser (attendee.html)
+Attendee scans QR code → opens registration form on their phone
         │  POST /register
         ▼
   Node.js / Express (server.js)
         │
-        ├── Gemini 2.5 Flash API  (async AI enrichment)
+        ├── Input validation + PDPA consent check
+        ├── Duplicate check (email + interest)
+        ├── MySQL 8.0 — lead inserted immediately
+        ├── Response sent to client instantly
         │
-        ├── MySQL 8.0             (primary store)
-        │
-        └── attendees.json        (offline fallback)
+        └── Gemini 2.5 Flash API (background enrichment)
+                └── Recommendation written back to MySQL async
 ```
 
-All components are containerised via Docker Compose — no manual setup per device.
+All components are containerised via Docker Compose — one command starts everything, no manual setup per device.
 
 ---
 
-## Pages & Endpoints
+## Pages
 
-| URL | Description |
-|-----|-------------|
-| `/` | Attendee self-registration form (PDPA consent + offline queue) |
-| `/dashboard` | Rep dashboard — all leads, searchable/filterable, sortable table |
-| `/team` | Team view — leads filtered by Dell team, grouped by segment |
-| `/analytics` | Line-manager analytics — KPIs, charts, hot leads list |
+| URL | Who Uses It | Purpose |
+|-----|-------------|---------|
+| `/` | Attendee / Booth rep | Self-registration form — captures lead details, PDPA consent, current IT challenge |
+| `/dashboard` | Booth rep + Dell sales team | All leads in real time — searchable, filterable, sortable, follow-up logging, CSV export |
 
-### REST API
+---
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/register` | Capture a new lead (validates PDPA consent) |
-| GET | `/api/leads` | All leads (API key required if set) |
-| GET | `/api/leads/team/:teamName` | Leads for a specific Dell team |
-| PATCH | `/api/leads/:id` | Update lead status/recommendation |
-| POST | `/api/leads/:id/followup` | Log a follow-up action |
-| GET | `/api/analytics` | Analytics data (priority, team, segment breakdowns) |
-| GET | `/api/export` | Download all leads as CSV (optional `?team=` filter) |
-| POST | `/api/webhook/delivery` | CRM delivery webhook (HMAC-verified) |
+## REST API
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/register` | None | Capture a new lead (validates PDPA consent) |
+| GET | `/api/leads` | API Key | All leads ordered by newest first |
+| GET | `/api/leads/team/:teamName` | API Key | Leads filtered by Dell team |
+| PATCH | `/api/leads/:id` | API Key | Update routing status or recommendation |
+| POST | `/api/leads/:id/followup` | API Key | Log a follow-up action for a lead |
+| GET | `/api/export` | API Key | Download all leads as CSV (?team= filter optional) |
+| POST | `/api/webhook/delivery` | HMAC sig | CRM delivery webhook for future Salesforce integration |
+| GET | `/api/health` | None | Returns DB connection status |
+
+---
+
+## Team Routing
+
+Interest area selected at registration maps directly to a Dell sales team:
+
+| Interest | Routed To |
+|----------|-----------|
+| AI PCs | Client Solutions Group (CSG) |
+| Storage | Infrastructure Solutions Group (ISG) |
+| Cloud | APEX & Cloud Services |
+| Consultancy | Professional Services |
 
 ---
 
 ## Lead Scoring (Rule-Based, Auditable)
 
-| Factor | Points |
-|--------|--------|
-| Enterprise (≥1000 employees) | 45 |
-| Mid-Market (200–999) | 28 |
-| Small Business (<200) | 10 |
-| Interest: Storage or Cloud | 35 |
-| Interest: AI PCs or Consultancy | 20 |
-| Email + Phone both provided | 20 |
-| **Max score** | **100** |
+Scoring is deterministic — no AI in the numbers. Every point is justifiable.
 
-- **HOT** ≥ 70 · **WARM** ≥ 45 · **COLD** < 45
-- Job title is deliberately excluded — free-text fields cannot be scored reliably.
+| Factor | Max Points | Logic |
+|--------|------------|-------|
+| Company size | 50 | Enterprise >=1000 = 50, Mid-market >=200 = 30, Small >=50 = 15, Micro = 5 |
+| Job title seniority | 30 | C-suite/Owner = 30, VP/Director = 20, Manager/Senior = 10, Other = 0 |
+| Current challenge captured | 20 | Rep recorded context = real conversation happened |
+| Maximum | 100 | |
+
+- HOT >= 60 — prioritise within 24 hours
+- WARM >= 35 — follow up within 48 hours
+- COLD < 35 — needs more qualification
 
 ---
 
 ## AI Enrichment
 
-Each lead triggers a background call to **Gemini 2.5 Flash** with:
-- Company name + size tier
-- Interest area + Dell product context
-- Current IT challenge (if provided by rep)
+Each lead triggers a background call to **Gemini 2.5 Flash** with the full lead profile:
+- Company name, size tier, job title
+- Interest area with Dell product context
+- Current IT challenge if captured by the rep
 
-Returns a single actionable follow-up recommendation specific to the lead's profile. Falls back to a rule-based template if the API is unavailable.
+Returns one specific, actionable follow-up recommendation. If Gemini is unavailable, a rule-based fallback template fires automatically — no lead is ever left blank.
 
 ---
 
-## Privacy & PDPA Compliance
+## Duplicate Prevention
 
-- PDPA consent checkbox is **mandatory** — registration is blocked server-side without it
-- Consent is stored (`pdpaConsent` column) and visible in all dashboards
-- No facial recognition or video recording
-- Contact data is stored only in the containerised MySQL instance
-- Data can be deleted via the MySQL admin or by request
+Duplicate check is email AND interest:
+- Same person, same booth (same email + same interest) — blocked
+- Same person, different booth (same email + different interest) — allowed, creates a second lead routed to the other Dell team
+
+---
+
+## Offline Resilience
+
+If the server is unreachable mid-event:
+1. Lead is saved to browser localStorage queue
+2. Rep sees a message: "Saved locally — will auto-sync when connection restores"
+3. window.addEventListener("online") fires when connectivity returns
+4. Queue flushes automatically — no action needed from the rep
+
+---
+
+## Privacy and PDPA Compliance
+
+- PDPA consent checkbox is mandatory — blocked client-side and server-side without it
+- Consent stored per lead (pdpaConsent column), visible in dashboard
+- No facial recognition, no video recording
+- All personal data stored only in the containerised MySQL instance
+- No plaintext file fallback — attendees.json does not exist in this project
+- Data can be deleted on request via MySQL
 
 ---
 
@@ -114,24 +149,26 @@ Returns a single actionable follow-up recommendation specific to the lead's prof
 
 ### Prerequisites
 - Docker Desktop
-- A Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+- A Gemini API key from https://aistudio.google.com/app/apikey
 
 ### Setup
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/24011183/C300-FYP-
-cd C300-FYP-
+git clone https://github.com/24011183/C300-FYP-Dell-InnovateDash
+cd C300-FYP-Dell-InnovateDash
 
 # 2. Create your .env file
 cp .env.example .env
-# Edit .env and add your GEMINI_API_KEY
+# Add your GEMINI_API_KEY to .env
 
 # 3. Start everything
 docker compose up --build
 
 # 4. Open in browser
-open http://localhost:3000
+# http://localhost:3000           - Registration form
+# http://localhost:3000/dashboard - Rep dashboard
+# http://localhost:3000/api/health - Health check
 ```
 
 ### Reset the database (wipe all leads)
@@ -141,6 +178,13 @@ docker compose down -v
 docker compose up --build
 ```
 
+### Generate a QR code for the booth
+
+1. Run ipconfig (Windows) or ifconfig (Mac/Linux) to find your IPv4 address
+2. Your registration URL is http://<your-ip>:3000
+3. Generate a QR code at https://www.qrcode-monkey.com and print it
+4. Attendees on the same network scan it and the form opens on their phone
+
 ---
 
 ## Cloud-Native Design
@@ -148,11 +192,13 @@ docker compose up --build
 | Principle | Implementation |
 |-----------|---------------|
 | Containerisation | Docker (Node 18 Alpine + MySQL 8.0) |
-| Declarative config | `docker-compose.yml`, `init.sql` |
+| Declarative config | docker-compose.yml, init.sql |
 | Portability | Runs on any Docker host — laptop, cloud VM, or Dell server |
-| Offline resilience | `localStorage` queue flushes automatically on reconnect |
-| API-first | All data exposed via REST endpoints for future CRM integration |
-| Separation of concerns | Frontend (HTML) / Backend (Express) / DB (MySQL) fully decoupled |
+| Health monitoring | GET /api/health pings MySQL, Docker healthcheck on both containers |
+| Offline resilience | localStorage queue auto-flushes on reconnect |
+| API-first | All data via REST — ready for CRM/Salesforce integration |
+| Separation of concerns | Frontend (HTML) / Backend (Express) / Database (MySQL) fully decoupled |
+| Future integration | Webhook endpoint with HMAC signature verification |
 
 ---
 
@@ -161,12 +207,11 @@ docker compose up --build
 ```
 ├── server.js           # Express backend — all routes and business logic
 ├── attendee.html       # Attendee self-registration form
-├── dashboard.html      # Rep dashboard (all leads)
-├── team-dashboard.html # Team view (filtered by Dell team)
-├── analytics.html      # Line-manager analytics
+├── dashboard.html      # Rep and sales team dashboard
 ├── init.sql            # MySQL schema
-├── Dockerfile          # Node app container
-├── docker-compose.yml  # Multi-container orchestration
+├── Dockerfile          # Node 18 Alpine container
+├── docker-compose.yml  # Multi-container orchestration with healthchecks
 ├── .env.example        # Environment variable template
-└── attendees.json      # Auto-created JSON fallback store
+├── .gitignore          # Excludes .env, node_modules
+└── README.md           # This file
 ```
