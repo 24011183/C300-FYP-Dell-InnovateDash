@@ -23,7 +23,7 @@ Dell booth representatives currently share a single mobile device running a thir
 
 | Member | Role |
 |--------|------|
-| Wee Teck | Backend, AI routing, lead scoring, follow-up logging, Docker |
+| Wee Teck | Backend, routing, lead scoring, follow-up logging, Docker |
 | Haad | Attendee registration form |
 | Fiona | Rep dashboard |
 | Alicia | NFC integration and backend support |
