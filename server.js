@@ -1,3 +1,4 @@
+// backend server setup - Alicia
 const mysql = require("mysql2");
 const express = require("express");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
@@ -6,10 +7,10 @@ require("dotenv").config();
 const app = express();
 const PORT = 3000;
 
-// Gemini AI Setup
+// Gemini AI Setup - WT
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Database Connection
+//Database Connection & Table Initialization -Alicia
 const dbConfig = {
   host: process.env.DB_HOST || "localhost",
   user: process.env.DB_USER || "root",
@@ -75,7 +76,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
 
-// ── TEAM ROUTING — maps interest area to Dell team ──
+// ── TEAM ROUTING — maps interest area to Dell team ─ Alicia
 const getTeamRoute = (interest) => {
   const teamRoutes = {
     "AI PCs": "Client Solutions Group (CSG)",
@@ -86,7 +87,7 @@ const getTeamRoute = (interest) => {
   return teamRoutes[interest] || "Client Solutions Group (CSG)";
 };
 
-// ── AI-POWERED RECOMMENDATION ENGINE ──
+// ── AI-POWERED RECOMMENDATION ENGINE ── - WT
 const analyzeLead = async (attendee) => {
 
   // Step 1: Rule-based routing — assign Dell team based on interest
@@ -186,7 +187,7 @@ app.get("/dashboard", (req, res) => {
 // Dell team view — each team sees only their own leads
 
 
-// ── REGISTRATION ENDPOINT ──
+// Registration & Database Processing - Alicia
 app.post("/register", async (req, res) => {
   // ── INPUT VALIDATION ──
   const name    = (req.body.name    || "").trim();
@@ -205,7 +206,7 @@ app.post("/register", async (req, res) => {
     return res.status(400).json({ message: "PDPA consent is required before registration can proceed." });
   }
 
-  // ── DUPLICATE PREVENTION (MySQL) ──
+  // ── DUPLICATE PREVENTION (MySQL) ─ Alicia
   // Duplicate = same person expressing the same interest at the same booth.
   // Same person at two different booths = two valid leads (different Dell teams).
   if (email) {
@@ -243,7 +244,7 @@ app.post("/register", async (req, res) => {
     processed_at: new Date().toLocaleString()
   };
 
-  // ── INSERT TO MySQL ──
+  // ── INSERT TO MySQL ─ Alicia
   const query = `
     INSERT INTO attendees
     (token, name, company, companySize, jobTitle, email, phone, interest, currentChallenge, pdpaConsent, assigned_team, action_recommendation)
@@ -272,7 +273,7 @@ app.post("/register", async (req, res) => {
 
 
 
-// ── BACKGROUND AI ENRICHMENT ──
+// ── BACKGROUND AI ENRICHMENT ─ WT
 const enrichLeadWithAI = async (attendee) => {
   try {
     const enriched = await analyzeLead(attendee);
@@ -289,7 +290,7 @@ const enrichLeadWithAI = async (attendee) => {
   }
 };
 
-// ── LIGHTWEIGHT API GATE ──
+// ── LIGHTWEIGHT API GATE ── WT
 // If API_KEY is set in the environment, the /api/leads* endpoints
 // endpoints require a matching x-api-key header (or ?key=). If API_KEY is NOT
 // set, the gate is open so nothing breaks by default.
@@ -303,7 +304,7 @@ const requireApiKey = (req, res, next) => {
   return res.status(401).json({ message: "Unauthorized: missing or invalid API key." });
 };
 
-// ── DASHBOARD API — all leads ──
+// ── DASHBOARD API — all leads ── WT
 app.get("/api/leads", requireApiKey, (req, res) => {
   db.query("SELECT * FROM attendees ORDER BY created_at DESC", (err, results) => {
     if (err) {
@@ -315,7 +316,7 @@ app.get("/api/leads", requireApiKey, (req, res) => {
   });
 });
 
-// ── TEAM API — filtered leads by assigned team ──
+// ── TEAM API — filtered leads by assigned team ── WT
 app.get("/api/leads/team/:teamName", requireApiKey, (req, res) => {
   const teamName = decodeURIComponent(req.params.teamName);
   db.query(
@@ -332,7 +333,7 @@ app.get("/api/leads/team/:teamName", requireApiKey, (req, res) => {
   );
 });
 
-// ── LEAD PRIORITISATION (transparent, rule-based — no AI in the maths) ──
+// ── LEAD PRIORITISATION (transparent, rule-based — no AI in the maths) ── WT
 // Every point here is auditable. We keep AI for language (recommendations),
 // and keep scoring deterministic so it can be defended in Q&A.
 const computeLeadScore = (attendee) => {
@@ -528,7 +529,7 @@ app.post("/api/webhook/delivery", (req, res) => {
   res.json({ message: "Webhook received.", received: req.body });
 });
 
-// ── HEALTH CHECK — for Docker healthcheck and cloud-native monitoring ──
+// ── HEALTH CHECK — for Docker healthcheck and cloud-native monitoring ── Alicia
 app.get("/api/health", (req, res) => {
   db.query("SELECT 1", (err) => {
     if (err) {
