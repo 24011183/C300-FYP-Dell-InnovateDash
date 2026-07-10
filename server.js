@@ -29,7 +29,8 @@ const handleDisconnect = () => {
       console.error("❌ Database connection failed:", err.message);
     } else {
       console.log("✅ Connected to MySQL successfully (Target: attendees table).");
-      // Auto-create table if it doesn't exist
+
+      // Auto-create table if it doesn't exist -Alicia
       const createTable = `
         CREATE TABLE IF NOT EXISTS attendees (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -47,6 +48,7 @@ const handleDisconnect = () => {
           action_recommendation TEXT,
           routing_status VARCHAR(50) DEFAULT 'ROUTED_AUTOMATICALLY',
           followup_note TEXT,
+          visitCount INT DEFAULT 1,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           INDEX idx_assigned_team (assigned_team),
           INDEX idx_token (token)
@@ -187,13 +189,14 @@ app.get("/dashboard", (req, res) => {
 // Dell team view — each team sees only their own leads
 
 
-// Registration & Database Processing - Alicia
+// Registration & Database Processing (main part) - Alicia
 app.post("/register", async (req, res) => {
+  console.log("🔥 /register endpoint reached");
   // ── INPUT VALIDATION ──
-  const name    = (req.body.name    || "").trim();
+  const name = (req.body.name || "").trim();
   const company = (req.body.company || "").trim();
   const interest = (req.body.interest || "").trim();
-  const email   = (req.body.email   || "").trim();
+  const email = (req.body.email || "").trim();
 
   if (!name || !company || !interest) {
     return res.status(400).json({ message: "Name, company and interest area are required." });
@@ -206,25 +209,61 @@ app.post("/register", async (req, res) => {
     return res.status(400).json({ message: "PDPA consent is required before registration can proceed." });
   }
 
-  // ── DUPLICATE PREVENTION (MySQL) ─ Alicia
-  // Duplicate = same person expressing the same interest at the same booth.
-  // Same person at two different booths = two valid leads (different Dell teams).
+  // ── DUPLICATE LEAD CONSOLIDATION (MySQL) ─ Alicia
+  // If the same attendee registers again for the same interest,
+  // update their existing record and increment the visit count.
+  // Registrations for different interests are treated as separate valid leads.
+  console.log("Checking duplicate...");
+
   if (email) {
     const dupCheck = await new Promise((resolve) => {
       db.query(
-        "SELECT token, name FROM attendees WHERE email = ? AND interest = ? LIMIT 1",
+        "SELECT token, name, visitCount FROM attendees WHERE email = ? AND interest = ? LIMIT 1",
         [email, interest],
-        (err, rows) => { resolve(err ? null : rows); }
+        (err, rows) => resolve(err ? null : rows)
       );
     });
+
     if (dupCheck && dupCheck.length > 0) {
       const existing = dupCheck[0];
-      console.log(`🔁 Duplicate lead skipped for ${email} + ${interest}`);
-      return res.json({
-        message: `${existing.name} has already been registered for ${interest}. Skipped duplicate.`,
-        duplicate: true,
-        lead: existing
-      });
+
+      db.query(
+        `UPDATE attendees
+       SET
+         company = ?,
+         companySize = ?,
+         jobTitle = ?,
+         phone = ?,
+         currentChallenge = ?,
+         visitCount = visitCount + 1
+       WHERE token = ?`,
+        [
+          company,
+          parseInt(req.body.companySize) || 0,
+          (req.body.jobTitle || "").trim(),
+          (req.body.phone || "").trim(),
+          (req.body.currentChallenge || "").trim(),
+          existing.token
+        ],
+        (err) => {
+          if (err) {
+            console.error("❌ Duplicate update failed:", err.message);
+            return res.status(500).json({
+              message: "Failed to update existing attendee."
+            });
+          }
+
+          console.log(`🔄 Existing attendee updated: ${existing.name}`);
+
+          return res.json({
+            duplicate: true,
+            message: `Welcome back ${existing.name}! Your previous registration has been updated.`,
+            visitCount: (existing.visitCount || 1) + 1
+          });
+        }
+      );
+
+      return;
     }
   }
 
@@ -245,16 +284,26 @@ app.post("/register", async (req, res) => {
   };
 
   // ── INSERT TO MySQL ─ Alicia
+  console.log("About to INSERT");
   const query = `
     INSERT INTO attendees
-    (token, name, company, companySize, jobTitle, email, phone, interest, currentChallenge, pdpaConsent, assigned_team, action_recommendation)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (token, name, company, companySize, jobTitle, email, phone, interest, currentChallenge, pdpaConsent, assigned_team, action_recommendation, visitCount)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   const values = [
-    rawAttendee.id, rawAttendee.name, rawAttendee.company,
-    rawAttendee.companySize, rawAttendee.jobTitle, rawAttendee.email,
-    rawAttendee.phone, rawAttendee.interest, rawAttendee.currentChallenge,
-    1, rawAttendee.assigned_team, rawAttendee.action_recommendation
+    rawAttendee.id,
+    rawAttendee.name,
+    rawAttendee.company,
+    rawAttendee.companySize,
+    rawAttendee.jobTitle,
+    rawAttendee.email,
+    rawAttendee.phone,
+    rawAttendee.interest,
+    rawAttendee.currentChallenge,
+    1,
+    rawAttendee.assigned_team,
+    rawAttendee.action_recommendation,
+    1
   ];
 
   db.query(query, values, (err) => {
@@ -345,10 +394,10 @@ const computeLeadScore = (attendee) => {
   // Thresholds align with Dell's own SMB / mid-market / enterprise segmentation.
   const size = parseInt(attendee.companySize) || 0;
   let sizePts = 0;
-  if      (size >= 1000) sizePts = 50;  // Enterprise
-  else if (size >= 200)  sizePts = 30;  // Mid-market
-  else if (size >= 50)   sizePts = 15;  // Small business
-  else                   sizePts = 5;   // Micro / startup
+  if (size >= 1000) sizePts = 50;  // Enterprise
+  else if (size >= 200) sizePts = 30;  // Mid-market
+  else if (size >= 50) sizePts = 15;  // Small business
+  else sizePts = 5;   // Micro / startup
   breakdown.companySize = sizePts;
   score += sizePts;
 
@@ -379,7 +428,7 @@ const computeLeadScore = (attendee) => {
   // Priority thresholds — calibrated so a mid-market Director with a challenge
   // recorded hits HOT, while a micro-business with no context stays COLD.
   let priority = "COLD";
-  if      (score >= 60) priority = "HOT";
+  if (score >= 60) priority = "HOT";
   else if (score >= 35) priority = "WARM";
 
   return { lead_score: score, priority, score_breakdown: breakdown };
@@ -395,10 +444,10 @@ const computeLeadScore = (attendee) => {
 // and API gate as the other data routes.
 const toCsv = (rows) => {
   const cols = ["name", "company", "companySize", "jobTitle", "email",
-                "phone", "interest", "currentChallenge", "pdpaConsent",
-                "assigned_team", "lead_score", "priority",
-                "routing_status", "followup_note",
-                "action_recommendation", "processed_at"];
+    "phone", "interest", "currentChallenge", "pdpaConsent",
+    "assigned_team", "lead_score", "priority",
+    "routing_status", "followup_note",
+    "action_recommendation", "processed_at"];
   const esc = (v) => {
     const s = String(v == null ? "" : v);
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
