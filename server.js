@@ -167,7 +167,7 @@ Rules:
     // Fallback if Gemini fails — matching the 5-component layout structure perfectly[cite: 2]
     const determinedSegment = attendee.companySize >= 1000 ? "Enterprise Division" : attendee.companySize >= 200 ? "Corporate Mid-Market" : "Commercial Small & Medium Business";
     const defaultIntent = attendee.currentChallenge ? "Evaluation (Exploring Solutions)" : "Information Gathering";
-    
+
     return {
       ...attendee,
       assigned_team,
@@ -206,7 +206,7 @@ app.post("/register", async (req, res) => {
     return res.status(400).json({ message: "PDPA consent is required before registration can proceed." });
   }
 
-// ── DUPLICATE LEAD CONSOLIDATION (MySQL) ─ Alicia
+  // ── DUPLICATE LEAD CONSOLIDATION (MySQL) ─ Alicia
   // If the same attendee registers again for the same interest,
   // update their existing record and increment the visit count.
   // Registrations for different interests are treated as separate valid leads.
@@ -322,12 +322,41 @@ app.post("/register", async (req, res) => {
 const enrichLeadWithAI = async (attendee) => {
   try {
     const enriched = await analyzeLead(attendee);
+    // ----- Buying Intent Prediction (Alicia) -----
+    const buyingIntentPrompt = `
+You are a Dell B2B sales specialist.
+
+Based ONLY on the attendee's current IT challenge, classify their buying intent.
+
+Current IT Challenge:
+${attendee.currentChallenge || "Not provided"}
+
+Return ONLY ONE of these words:
+High
+Medium
+Low
+`;
+
+    const buyingIntentResult = await genAI
+      .getGenerativeModel({ model: "gemini-2.5-flash" })
+      .generateContent(buyingIntentPrompt);
+
+    const buyingIntent = buyingIntentResult.response.text().trim();
     db.query(
-      "UPDATE attendees SET action_recommendation = ? WHERE token = ?",
-      [enriched.action_recommendation, attendee.id],
+      `UPDATE attendees
+   SET action_recommendation = ?,
+       buying_intent = ?
+   WHERE token = ?`,
+      [
+        enriched.action_recommendation,
+        buyingIntent,
+        attendee.id
+      ],
       (err) => {
         if (err) console.error("❌ AI enrichment MySQL update failed:", err.message);
-        else console.log(`✅ AI updates synced for ${attendee.name}`);
+        else console.log(
+          `✅ AI updates synced for ${attendee.name} | Buying Intent: ${buyingIntent}`
+        );
       }
     );
   } catch (err) {
@@ -380,8 +409,8 @@ const computeLeadScore = (attendee) => {
 
   const title = (attendee.jobTitle || "").toLowerCase();
   let titlePts = /ceo|cto|cio|cfo|president|owner|founder|managing director|md/.test(title) ? 30
-               : /vp|vice president|director|head of|chief/.test(title) ? 20
-               : /manager|lead|senior|principal|architect/.test(title) ? 10 : 0;
+    : /vp|vice president|director|head of|chief/.test(title) ? 20
+      : /manager|lead|senior|principal|architect/.test(title) ? 10 : 0;
   breakdown.jobTitle = titlePts;
   score += titlePts;
 
@@ -396,10 +425,10 @@ const computeLeadScore = (attendee) => {
 // ── CSV EXPORT ──[cite: 2]
 const toCsv = (rows) => {
   const cols = ["name", "company", "companySize", "jobTitle", "email",
-                "phone", "interest", "currentChallenge", "pdpaConsent",
-                "assigned_team", "lead_score", "priority",
-                "routing_status", "followup_note",
-                "action_recommendation", "processed_at"];
+    "phone", "interest", "currentChallenge", "pdpaConsent",
+    "assigned_team", "lead_score", "priority",
+    "routing_status", "followup_note",
+    "action_recommendation", "processed_at"];
   const esc = (v) => {
     const s = String(v == null ? "" : v);
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
