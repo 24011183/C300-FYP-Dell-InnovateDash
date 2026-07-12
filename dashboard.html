@@ -171,7 +171,7 @@
       margin-bottom: 20px; font-size: 13px; display: none;
     }
 
-    /* Modal */
+    /* Modal Layout Standard Themes */
     .modal-overlay {
       display: none; position: fixed; inset: 0;
       background: rgba(0,0,0,0.75); z-index: 1000;
@@ -303,7 +303,7 @@
   <div class="last-updated" id="lastUpdated"></div>
 </div>
 
-<!-- Lead Detail Modal -->
+<!-- Lead Detail Modal[cite: 1] -->
 <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
   <div class="modal">
     <button class="modal-close" onclick="closeModalDirect()">✕</button>
@@ -316,17 +316,21 @@
       <div class="modal-row"><span class="modal-label">Phone</span><span class="modal-value" id="mPhone"></span></div>
     </div>
 
+    <!-- Feature 2 Corporate Sizing & Auto Industry Mapping UI Elements[cite: 1] -->
     <div class="modal-section">
       <div class="modal-section-title">Company</div>
       <div class="modal-row"><span class="modal-label">Company</span><span class="modal-value" id="mCompany"></span></div>
       <div class="modal-row"><span class="modal-label">Size</span><span class="modal-value" id="mSize"></span></div>
+      <div class="modal-row"><span class="modal-label">AI Inferred Industry</span><span class="modal-value" id="mIndustry" style="color: #60a5fa; font-weight: bold;"></span></div>
       <div class="modal-row"><span class="modal-label">Segment</span><span class="modal-value" id="mSegment"></span></div>
     </div>
 
+    <!-- Feature 3 Urgency Gauge Badge Element[cite: 1] -->
     <div class="modal-section">
       <div class="modal-section-title">Lead Profile</div>
       <div class="modal-row"><span class="modal-label">Interest</span><span class="modal-value" id="mInterest"></span></div>
       <div class="modal-row"><span class="modal-label">Current Challenge</span><span class="modal-value" id="mChallenge" style="color:#fbbf24;"></span></div>
+      <div class="modal-row"><span class="modal-label">AI Buying Intent Urgency</span><span class="modal-value" id="mIntentUrgency" style="font-weight: bold;"></span></div>
       <div class="modal-row"><span class="modal-label">Assigned Team</span><span class="modal-value" id="mTeam"></span></div>
       <div class="modal-row"><span class="modal-label">Lead Score</span><span class="modal-value" id="mScore"></span></div>
       <div class="modal-row"><span class="modal-label">Priority</span><span class="modal-value" id="mPriority"></span></div>
@@ -337,16 +341,29 @@
 
     <div class="modal-section">
       <div class="modal-section-title">⚡ AI Recommended Action</div>
-      <div class="modal-rec" id="mRec"></div>
+      <div class="modal-rec" id="mRec" style="margin-bottom: 14px;"></div>
     </div>
 
+    <!-- Feature 1 UI Outreach Panel[cite: 1] -->
     <div class="modal-section">
-      <div class="modal-section-title">📝 Log Follow-Up</div>
-      <div style="font-size:12px;color:#9ca3af;margin-bottom:10px;" id="mFollowupNote"></div>
+      <div class="modal-section-title">✉️ Personalized Client Outreach Email (Editable)</div>
+      <textarea id="mEmailDraft" style="width: 100%; height: 160px; background: #1f2937; border: 1px solid #374151; color: #fff; padding: 10px; border-radius: 4px; font-family: inherit; font-size: 13px; line-height: 1.5; resize: vertical;"></textarea>
+      <button id="launchEmailBtn" class="modal-btn" style="background: #22c55e; margin-top: 10px; font-weight: 700;">🚀 Launch Pitch & Auto-Log Follow-Up</button>
+    </div>
+
+    <!-- Action Execution Logger Forms[cite: 1] -->
+    <div class="modal-section" style="border-top: 1px solid #1f2937; padding-top: 15px;">
+      <div class="modal-section-title">📝 Log New Follow-Up Action</div>
       <input class="modal-input" id="fuAction" type="text" placeholder="Action taken (e.g. Booked demo call)">
       <input class="modal-input" id="fuNotes" type="text" placeholder="Notes (optional)">
       <input class="modal-input" id="fuRep" type="text" placeholder="Your name">
       <button class="modal-btn" onclick="logFollowUp()">Log Follow-Up Action</button>
+    </div>
+
+    <!-- CRM Past Activity History Timeline Stream Box[cite: 1] -->
+    <div class="modal-section" style="border-top: 1px solid #1f2937; padding-top: 15px;">
+      <div class="modal-section-title">📜 History & Activity Logs Timeline</div>
+      <div id="mFollowupNote" style="font-size: 13px; color: #cbd5e1; background: #0f172a; border: 1px solid #1e293b; padding: 12px; border-radius: 6px; min-height: 44px; line-height: 1.6; white-space: pre-wrap;"></div>
     </div>
   </div>
 </div>
@@ -366,25 +383,21 @@
 
   function computeScore(l) {
     let score = 0;
-
-    // Factor 1: Company size (50 pts max)
     const size = parseInt(l.companySize) || 0;
     if      (size >= 1000) score += 50;
     else if (size >= 200)  score += 30;
     else if (size >= 50)   score += 15;
     else                   score += 5;
 
-    // Factor 2: Job title seniority (30 pts max)
     const title = (l.jobTitle || "").toLowerCase();
-    if (/ceo|cto|cio|cfo|president|owner|founder|managing director|md/.test(title)) {
+    if (/ceo|cto|cio|cfo|president|owner|founder|managing director|md /.test(title)) {
       score += 30;
-    } else if (/vp|vice president|director|head of|chief/.test(title)) {
+    } else if (/ vp |vice president|director|head of|chief/.test(title)) {
       score += 20;
     } else if (/manager|lead|senior|principal|architect/.test(title)) {
       score += 10;
     }
 
-    // Factor 3: Current challenge captured (20 pts)
     if (l.currentChallenge && l.currentChallenge.trim()) score += 20;
 
     score = Math.min(score, 100);
@@ -528,12 +541,115 @@
     document.getElementById("mPdpa").textContent    = l.pdpaConsent ? "✅ Consented" : "⚠️ Not recorded";
     document.getElementById("mStatus").textContent  = l.routing_status || "ROUTED_AUTOMATICALLY";
     document.getElementById("mCaptured").textContent = l.processed_at || l.created_at || "—";
-    document.getElementById("mRec").textContent     = l.action_recommendation || "No recommendation yet.";
+    
+    // ── STRING BOUNDARY EXTRACTION ENGINE FOR ALL 3 FEATURES ──[cite: 1]
+    const rawText = l.action_recommendation || "";
+    let internalRec = "No recommendation yet.";
+    let clientEmail  = "No email pitch generated yet.";
+    let inferredInd = "Analyzing company footprint...";
+    let targetSeg   = (parseInt(l.companySize) || 0) >= 1000 ? "🏢 Enterprise Division" : (parseInt(l.companySize) || 0) >= 200 ? "🏬 Corporate Mid-Market" : "🏪 Commercial SMB";
+    let intentUrgency = "Evaluating project context...";
+    let intentColor   = "#e2e8f0";
+
+    if (rawText.includes("|||EMAIL_SPLIT|||") && rawText.includes("|||INDUSTRY_SPLIT|||") && rawText.includes("|||SEGMENT_SPLIT|||") && rawText.includes("|||INTENT_SPLIT|||")) {
+      const parts = rawText.split("|||EMAIL_SPLIT|||");
+      internalRec = parts[0].trim();
+      
+      const rest1 = parts[1].split("|||INDUSTRY_SPLIT|||");
+      clientEmail = rest1[0].trim();
+      
+      const rest2 = rest1[1].split("|||SEGMENT_SPLIT|||");
+      inferredInd = rest2[0].trim();
+      
+      const rest3 = rest2[1].split("|||INTENT_SPLIT|||");
+      targetSeg   = "🏢 " + rest3[0].trim();
+      intentUrgency = rest3[1].trim();
+
+      // Enforce Keyboard Smash NIL Fallback Formatting Rules[cite: 1]
+      if (inferredInd.includes("NIL")) {
+        inferredInd = "⚠️ NIL (Unclassified)";
+      } else {
+        inferredInd = "🤖 " + inferredInd;
+      }
+
+      // Feature 3 Intent Visual Matrix Colors[cite: 1]
+      if (intentUrgency.includes("Critical")) {
+        intentUrgency = "🔴 " + intentUrgency;
+        intentColor = "#f87171";
+      } else if (intentUrgency.includes("Evaluation")) {
+        intentUrgency = "🟡 " + intentUrgency;
+        intentColor = "#fbbf24";
+      } else {
+        intentUrgency = "🔵 " + intentUrgency;
+        intentColor = "#60a5fa";
+      }
+    } else {
+      internalRec = rawText;
+    }
+
+    document.getElementById("mRec").textContent = internalRec;
+    document.getElementById("mEmailDraft").value = clientEmail;
+    document.getElementById("mIndustry").textContent = inferredInd;
+    document.getElementById("mSegment").textContent = targetSeg;
+    
+    const urgencyEl = document.getElementById("mIntentUrgency");
+    urgencyEl.textContent = intentUrgency;
+    urgencyEl.style.color = intentColor;
+
+    // Timeline Stream Render[cite: 1]
     document.getElementById("mFollowupNote").textContent = l.followup_note
-      ? "Last logged: " + l.followup_note
-      : "No follow-up logged yet.";
+      ? l.followup_note
+      : "ℹ️ No past follow-up actions have been logged for this contact yet.";
 
     document.getElementById("modalOverlay").dataset.token = l.token || l.id;
+    
+    // Wire up Feature 1 Email Activation Click Event[cite: 1]
+    const launchBtn = document.getElementById("launchEmailBtn");
+    if (rawText && rawText !== "Processing...") {
+      launchBtn.disabled = false;
+      launchBtn.style.opacity = "1";
+      launchBtn.style.cursor = "pointer";
+      
+      launchBtn.onclick = async function() {
+        // Reads dynamic workspace manual text adjustments right out of text box container
+        const finalEmailText = document.getElementById("mEmailDraft").value;
+        const subjectLine = `Dell Technologies Forum Follow-Up: Core Innovations for ${l.company}`;
+        window.location.href = `mailto:${l.email}?subject=${encodeURIComponent(subjectLine)}&body=${encodeURIComponent(finalEmailText)}`;
+        
+        try {
+          const targetToken = l.token || l.id;
+          const response = await fetch(`/api/leads/${targetToken}/followup`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(sessionStorage.getItem("apiKey") ? { "x-api-key": sessionStorage.getItem("apiKey") } : {})
+            },
+            body: JSON.stringify({
+              action_taken: "Sent Automated AI Pitch",
+              notes: "Outreach text populated and fired straight to mail client app using zero-friction macro.",
+              rep_name: "Dell Copilot Core"
+            })
+          });
+          
+          if (response.ok) {
+            alert("✅ Follow-up logged automatically! Pipeline status changed to FOLLOWED_UP.");
+            closeModalDirect();
+            loadLeads();
+          } else {
+            const errData = await response.json();
+            alert("⚠️ Email launched, but status update failed: " + errData.message);
+          }
+        } catch (err) {
+          console.error("Auto-log request failed:", err);
+        }
+      };
+    } else {
+      launchBtn.disabled = true;
+      launchBtn.style.opacity = "0.4";
+      launchBtn.style.cursor = "not-allowed";
+      launchBtn.onclick = null;
+    }
+
     document.getElementById("modalOverlay").classList.add("show");
   }
 
@@ -579,7 +695,6 @@
     document.getElementById("modalOverlay").classList.remove("show");
   }
 
-  // Initial load + auto-refresh
   loadLeads();
   setInterval(loadLeads, 10000);
 </script>
