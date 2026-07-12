@@ -1,4 +1,5 @@
 // backend server setup - Alicia
+// backend server setup - Alicia
 const mysql = require("mysql2");
 const express = require("express");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
@@ -7,9 +8,10 @@ require("dotenv").config();
 const app = express();
 const PORT = 3000;
 
-// Gemini AI Setup - WT
+// Gemini AI Setup - WT - WT
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+//Database Connection & Table Initialization -Alicia
 //Database Connection & Table Initialization -Alicia
 const dbConfig = {
   host: process.env.DB_HOST || "localhost",
@@ -30,7 +32,8 @@ const handleDisconnect = () => {
     } else {
       console.log("✅ Connected to MySQL successfully (Target: attendees table).");
 
-      // Auto-create table if it doesn't exist[cite: 2]
+
+      // Auto-create table if it doesn't exist[cite: 2] -Alicia
       const createTable = `
         CREATE TABLE IF NOT EXISTS attendees (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -48,6 +51,7 @@ const handleDisconnect = () => {
           action_recommendation TEXT,
           routing_status VARCHAR(50) DEFAULT 'ROUTED_AUTOMATICALLY',
           followup_note TEXT,
+          visitCount INT DEFAULT 1,
           visitCount INT DEFAULT 1,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           INDEX idx_assigned_team (assigned_team),
@@ -79,6 +83,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
 
 // ── TEAM ROUTING — maps interest area to Dell team ─ Alicia
+// ── TEAM ROUTING — maps interest area to Dell team ─ Alicia
 const getTeamRoute = (interest) => {
   const teamRoutes = {
     "AI PCs": "Client Solutions Group (CSG)",
@@ -89,7 +94,7 @@ const getTeamRoute = (interest) => {
   return teamRoutes[interest] || "Client Solutions Group (CSG)";
 };
 
-// ── AI-POWERED RECOMMENDATION ENGINE ──
+// ── AI-POWERED RECOMMENDATION ENGINE ── - WT
 const analyzeLead = async (attendee) => {
 
   // Step 1: Rule-based routing — assign Dell team based on interest[cite: 2]
@@ -212,17 +217,63 @@ app.post("/register", async (req, res) => {
   // Registrations for different interests are treated as separate valid leads.
   console.log("Checking duplicate...");
 
+  // ── DUPLICATE LEAD CONSOLIDATION (MySQL) ─ Alicia
+  // If the same attendee registers again for the same interest,
+  // update their existing record and increment the visit count.
+  // Registrations for different interests are treated as separate valid leads.
+  console.log("Checking duplicate...");
+
   if (email) {
     const dupCheck = await new Promise((resolve) => {
       db.query(
-        "SELECT token, name, visitCount FROM attendees WHERE email = ? AND interest = ? LIMIT 1",
+        "SELECT token, name, visitCount, visitCount FROM attendees WHERE email = ? AND interest = ? LIMIT 1",
         [email, interest],
+        (err, rows) => resolve(err ? null : rows)
         (err, rows) => resolve(err ? null : rows)
       );
     });
 
+
     if (dupCheck && dupCheck.length > 0) {
       const existing = dupCheck[0];
+
+      db.query(
+        `UPDATE attendees
+       SET
+         company = ?,
+         companySize = ?,
+         jobTitle = ?,
+         phone = ?,
+         currentChallenge = ?,
+         visitCount = visitCount + 1
+       WHERE token = ?`,
+        [
+          company,
+          parseInt(req.body.companySize) || 0,
+          (req.body.jobTitle || "").trim(),
+          (req.body.phone || "").trim(),
+          (req.body.currentChallenge || "").trim(),
+          existing.token
+        ],
+        (err) => {
+          if (err) {
+            console.error("❌ Duplicate update failed:", err.message);
+            return res.status(500).json({
+              message: "Failed to update existing attendee."
+            });
+          }
+
+          console.log(`🔄 Existing attendee updated: ${existing.name}`);
+
+          return res.json({
+            duplicate: true,
+            message: `Welcome back ${existing.name}! Your previous registration has been updated.`,
+            visitCount: (existing.visitCount || 1) + 1
+          });
+        }
+      );
+
+      return;
 
       db.query(
         `UPDATE attendees
@@ -282,24 +333,35 @@ app.post("/register", async (req, res) => {
 
   // ── INSERT TO MySQL ─ Alicia
   console.log("About to INSERT");
+  // ── INSERT TO MySQL ─ Alicia
+  console.log("About to INSERT");
   const query = `
     INSERT INTO attendees
-    (token, name, company, companySize, jobTitle, email, phone, interest, currentChallenge, pdpaConsent, assigned_team, action_recommendation, visitCount)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (token, name, company, companySize, jobTitle, email, phone, interest, currentChallenge, pdpaConsent, assigned_team, action_recommendation, visitCount, visitCount)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   const values = [
     rawAttendee.id,
+   
     rawAttendee.name,
+   
     rawAttendee.company,
     rawAttendee.companySize,
+   
     rawAttendee.jobTitle,
+   
     rawAttendee.email,
     rawAttendee.phone,
+   
     rawAttendee.interest,
+   
     rawAttendee.currentChallenge,
     1,
+   
     rawAttendee.assigned_team,
+   
     rawAttendee.action_recommendation,
+    1,
     1
   ];
 
