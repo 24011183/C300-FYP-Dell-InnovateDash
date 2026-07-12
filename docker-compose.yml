@@ -1,6 +1,6 @@
 ﻿services:
 
-  # MySQL Database
+  # MySQL Database Service
   db:
     image: mysql:8.0
     container_name: dell_mysql
@@ -19,7 +19,7 @@
       timeout: 5s
       retries: 5
 
-  # Node.js App
+  # Node.js Application Service
   app:
     build: .
     container_name: dell_app
@@ -43,5 +43,6 @@
       retries: 3
       start_period: 10s
 
+# Persistent Named Volumes Layout Storage
 volumes:
   dell_db_data:

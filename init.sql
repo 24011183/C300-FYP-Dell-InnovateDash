@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS attendees (
     action_recommendation TEXT,
     routing_status VARCHAR(50) DEFAULT 'ROUTED_AUTOMATICALLY',
     followup_note TEXT,
+    visitCount INT DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_assigned_team (assigned_team),
     INDEX idx_token (token)

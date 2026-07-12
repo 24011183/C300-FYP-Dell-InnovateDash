@@ -1,3 +1,4 @@
+// backend server setup - Alicia
 const mysql = require("mysql2");
 const express = require("express");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
@@ -6,10 +7,10 @@ require("dotenv").config();
 const app = express();
 const PORT = 3000;
 
-// Gemini AI Setup
+// Gemini AI Setup - WT
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Database Connection
+//Database Connection & Table Initialization -Alicia
 const dbConfig = {
   host: process.env.DB_HOST || "localhost",
   user: process.env.DB_USER || "root",
@@ -28,7 +29,8 @@ const handleDisconnect = () => {
       console.error("❌ Database connection failed:", err.message);
     } else {
       console.log("✅ Connected to MySQL successfully (Target: attendees table).");
-      // Auto-create table if it doesn't exist
+
+      // Auto-create table if it doesn't exist[cite: 2]
       const createTable = `
         CREATE TABLE IF NOT EXISTS attendees (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -46,6 +48,7 @@ const handleDisconnect = () => {
           action_recommendation TEXT,
           routing_status VARCHAR(50) DEFAULT 'ROUTED_AUTOMATICALLY',
           followup_note TEXT,
+          visitCount INT DEFAULT 1,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           INDEX idx_assigned_team (assigned_team),
           INDEX idx_token (token)
@@ -75,7 +78,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
 
-// ── TEAM ROUTING — maps interest area to Dell team ──
+// ── TEAM ROUTING — maps interest area to Dell team ─ Alicia
 const getTeamRoute = (interest) => {
   const teamRoutes = {
     "AI PCs": "Client Solutions Group (CSG)",
@@ -89,15 +92,15 @@ const getTeamRoute = (interest) => {
 // ── AI-POWERED RECOMMENDATION ENGINE ──
 const analyzeLead = async (attendee) => {
 
-  // Step 1: Rule-based routing — assign Dell team based on interest
+  // Step 1: Rule-based routing — assign Dell team based on interest[cite: 2]
   const assigned_team = getTeamRoute(attendee.interest);
 
-  // Step 2: Determine company size tier for smarter recommendations
+  // Step 2: Determine company size tier for smarter recommendations[cite: 2]
   let companyTier = "small business";
   if (attendee.companySize >= 1000) companyTier = "large enterprise";
   else if (attendee.companySize >= 200) companyTier = "mid-market company";
 
-  // Step 3: Build Gemini prompt
+  // Step 3: Build Gemini prompt[cite: 2]
   const challengeLine = attendee.currentChallenge
     ? `- Current Challenge: ${attendee.currentChallenge}`
     : "";
@@ -121,27 +124,34 @@ Dell product context by interest area:
 - Cloud: Dell APEX as-a-service portfolio, Dell APEX Cloud Platforms, multicloud solutions
 - Consultancy: Dell ProDeploy Plus, Dell ProSupport Enterprise Suite, Dell Residency Services
 
-Based on this profile, give ONE specific and actionable follow-up recommendation
-that the ${assigned_team} team should take within 48 hours after the event.
+Based on this profile, generate exactly FIVE components separated verbatim by the strict delimiters shown below.
+
+Component 1: Give ONE specific, actionable internal follow-up recommendation that the ${assigned_team} team should take within 48 hours after the event. Keep it as a single sentence.
+|||EMAIL_SPLIT|||
+Component 2: Write a personalized, highly professional client outreach follow-up email from Dell Technologies addressed to ${attendee.name}. Reference their job title, company size tier, and address their stated IT challenge directly if provided. Keep the tone warm, consultative, and focused on scheduling a brief follow-up call. Do not use generic placeholders.
+|||INDUSTRY_SPLIT|||
+Component 3: Infer the single most accurate Industry Vertical for this company (e.g., Financial Services, Healthcare, E-commerce, Government, Manufacturing, Logistics). 
+CRITICAL RULE: If the company name is a keyboard smash (e.g., "asdfghjkl", "qwerty"), unrecognizable text, random letters, or lacks semantic context to confidently infer a real sector, you MUST output exactly "NIL (Unclassified)". Do not default to Technology.
+|||SEGMENT_SPLIT|||
+Component 4: Map the company to one of Dell's account structures based on employee size: If size >= 1000 output "Enterprise Division", if size >= 200 output "Corporate Mid-Market", else output "Commercial Small & Medium Business". Output only the segment name.
+|||INTENT_SPLIT|||
+Component 5: Evaluate the semantic intent of the "Current Challenge" text field and output exactly one of these labels based on urgency:
+- If a serious infrastructure issue, bottleneck, or urgent problem is written, output: "Critical (Active Project)"
+- If general evaluation, comparison, or research is written, output: "Evaluation (Exploring Solutions)"
+- If the field is empty, generic, or just conversational text, output: "Information Gathering"
 
 Rules:
-- Reference specific Dell products or services relevant to their interest area
-- Be specific to their job title and company size
-- If a current challenge is provided, address it directly in the recommendation
-- Recommend a real action (e.g. book a call, send a specific resource, invite to a specific event)
-- Consider that a ${companyTier} with a ${attendee.jobTitle} has different priorities than others
-- Do NOT use vague responses like "send newsletter" or "track email"
-- Do NOT include scores or labels like hot/warm/cold
-- Return only the recommendation as a single sentence. No extra explanation.
+- Do NOT use markdown code blocks or formatting labels.
+- Output only the requested components separated strictly by the specified strings: "|||EMAIL_SPLIT|||", "|||INDUSTRY_SPLIT|||", "|||SEGMENT_SPLIT|||", and "|||INTENT_SPLIT|||".
 `;
 
   try {
-    // Step 4: Call Gemini 2.5 Flash
+    // Step 4: Call Gemini 2.5 Flash[cite: 2]
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
     const recommendation = result.response.text().trim();
 
-    console.log(`🤖 Gemini recommendation for ${attendee.name}: ${recommendation}`);
+    console.log(`🤖 Gemini Multi-Feature Engine completed for ${attendee.name}`);
     console.log(`📨 Lead routed to: ${assigned_team}`);
 
     return {
@@ -154,45 +164,36 @@ Rules:
   } catch (err) {
     console.error("❌ Gemini API error:", err.message);
 
-    // Fallback if Gemini fails
-    const fallbackActions = {
-      "AI PCs": `Schedule a Dell Latitude AI PC demo session for ${attendee.name} from ${attendee.company}, showcasing Dell Optimizer and Intel Core Ultra capabilities for their ${companyTier} workforce.`,
-      "Storage": `Arrange a Dell PowerStore technical briefing for ${attendee.name} from ${attendee.company} to assess their current storage infrastructure and present a migration roadmap.`,
-      "Cloud": `Invite ${attendee.name} from ${attendee.company} to a Dell APEX as-a-service workshop to explore multicloud deployment options suited for a ${companyTier}.`,
-      "Consultancy": `Schedule a Dell ProDeploy Plus scoping call with ${attendee.name} from ${attendee.company} to outline a deployment and ProSupport Enterprise Suite plan.`
-    };
-
+    // Fallback if Gemini fails — matching the 5-component layout structure perfectly[cite: 2]
+    const determinedSegment = attendee.companySize >= 1000 ? "Enterprise Division" : attendee.companySize >= 200 ? "Corporate Mid-Market" : "Commercial Small & Medium Business";
+    const defaultIntent = attendee.currentChallenge ? "Evaluation (Exploring Solutions)" : "Information Gathering";
+    
     return {
       ...attendee,
       assigned_team,
-      action_recommendation: fallbackActions[attendee.interest] || `Follow up with ${attendee.name} regarding ${attendee.interest} solutions.`,
+      action_recommendation: `Follow up regarding ${attendee.interest} solutions. |||EMAIL_SPLIT|||Dear ${attendee.name},\n\nThank you for connecting with us at the Dell Technologies Forum. We look forward to discussing our ${attendee.interest} solutions with you soon. |||INDUSTRY_SPLIT|||NIL (Unclassified) |||SEGMENT_SPLIT|||${determinedSegment} |||INTENT_SPLIT|||${defaultIntent}`,
       processed_at: new Date().toLocaleString()
     };
   }
 };
 
-// ── ROUTES ──
-
-// Home — Attendee registration page
+// ── ROUTES ──[cite: 2]
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/attendee.html");
 });
 
-// Rep dashboard — all leads
 app.get("/dashboard", (req, res) => {
   res.sendFile(__dirname + "/dashboard.html");
 });
 
-// Dell team view — each team sees only their own leads
-
-
-// ── REGISTRATION ENDPOINT ──
+// Registration & Database Processing (main part) - Alicia
 app.post("/register", async (req, res) => {
+  console.log("🔥 /register endpoint reached");
   // ── INPUT VALIDATION ──
-  const name    = (req.body.name    || "").trim();
+  const name = (req.body.name || "").trim();
   const company = (req.body.company || "").trim();
   const interest = (req.body.interest || "").trim();
-  const email   = (req.body.email   || "").trim();
+  const email = (req.body.email || "").trim();
 
   if (!name || !company || !interest) {
     return res.status(400).json({ message: "Name, company and interest area are required." });
@@ -205,25 +206,61 @@ app.post("/register", async (req, res) => {
     return res.status(400).json({ message: "PDPA consent is required before registration can proceed." });
   }
 
-  // ── DUPLICATE PREVENTION (MySQL) ──
-  // Duplicate = same person expressing the same interest at the same booth.
-  // Same person at two different booths = two valid leads (different Dell teams).
+// ── DUPLICATE LEAD CONSOLIDATION (MySQL) ─ Alicia
+  // If the same attendee registers again for the same interest,
+  // update their existing record and increment the visit count.
+  // Registrations for different interests are treated as separate valid leads.
+  console.log("Checking duplicate...");
+
   if (email) {
     const dupCheck = await new Promise((resolve) => {
       db.query(
-        "SELECT token, name FROM attendees WHERE email = ? AND interest = ? LIMIT 1",
+        "SELECT token, name, visitCount FROM attendees WHERE email = ? AND interest = ? LIMIT 1",
         [email, interest],
-        (err, rows) => { resolve(err ? null : rows); }
+        (err, rows) => resolve(err ? null : rows)
       );
     });
+
     if (dupCheck && dupCheck.length > 0) {
       const existing = dupCheck[0];
-      console.log(`🔁 Duplicate lead skipped for ${email} + ${interest}`);
-      return res.json({
-        message: `${existing.name} has already been registered for ${interest}. Skipped duplicate.`,
-        duplicate: true,
-        lead: existing
-      });
+
+      db.query(
+        `UPDATE attendees
+       SET
+         company = ?,
+         companySize = ?,
+         jobTitle = ?,
+         phone = ?,
+         currentChallenge = ?,
+         visitCount = visitCount + 1
+       WHERE token = ?`,
+        [
+          company,
+          parseInt(req.body.companySize) || 0,
+          (req.body.jobTitle || "").trim(),
+          (req.body.phone || "").trim(),
+          (req.body.currentChallenge || "").trim(),
+          existing.token
+        ],
+        (err) => {
+          if (err) {
+            console.error("❌ Duplicate update failed:", err.message);
+            return res.status(500).json({
+              message: "Failed to update existing attendee."
+            });
+          }
+
+          console.log(`🔄 Existing attendee updated: ${existing.name}`);
+
+          return res.json({
+            duplicate: true,
+            message: `Welcome back ${existing.name}! Your previous registration has been updated.`,
+            visitCount: (existing.visitCount || 1) + 1
+          });
+        }
+      );
+
+      return;
     }
   }
 
@@ -243,17 +280,27 @@ app.post("/register", async (req, res) => {
     processed_at: new Date().toLocaleString()
   };
 
-  // ── INSERT TO MySQL ──
+  // ── INSERT TO MySQL ─ Alicia
+  console.log("About to INSERT");
   const query = `
     INSERT INTO attendees
-    (token, name, company, companySize, jobTitle, email, phone, interest, currentChallenge, pdpaConsent, assigned_team, action_recommendation)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (token, name, company, companySize, jobTitle, email, phone, interest, currentChallenge, pdpaConsent, assigned_team, action_recommendation, visitCount)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
   const values = [
-    rawAttendee.id, rawAttendee.name, rawAttendee.company,
-    rawAttendee.companySize, rawAttendee.jobTitle, rawAttendee.email,
-    rawAttendee.phone, rawAttendee.interest, rawAttendee.currentChallenge,
-    1, rawAttendee.assigned_team, rawAttendee.action_recommendation
+    rawAttendee.id,
+    rawAttendee.name,
+    rawAttendee.company,
+    rawAttendee.companySize,
+    rawAttendee.jobTitle,
+    rawAttendee.email,
+    rawAttendee.phone,
+    rawAttendee.interest,
+    rawAttendee.currentChallenge,
+    1,
+    rawAttendee.assigned_team,
+    rawAttendee.action_recommendation,
+    1
   ];
 
   db.query(query, values, (err) => {
@@ -271,8 +318,7 @@ app.post("/register", async (req, res) => {
 });
 
 
-
-// ── BACKGROUND AI ENRICHMENT ──
+// ── BACKGROUND AI ENRICHMENT ──[cite: 2]
 const enrichLeadWithAI = async (attendee) => {
   try {
     const enriched = await analyzeLead(attendee);
@@ -281,7 +327,7 @@ const enrichLeadWithAI = async (attendee) => {
       [enriched.action_recommendation, attendee.id],
       (err) => {
         if (err) console.error("❌ AI enrichment MySQL update failed:", err.message);
-        else console.log(`✅ AI recommendation updated for ${attendee.name}`);
+        else console.log(`✅ AI updates synced for ${attendee.name}`);
       }
     );
   } catch (err) {
@@ -289,109 +335,65 @@ const enrichLeadWithAI = async (attendee) => {
   }
 };
 
-// ── LIGHTWEIGHT API GATE ──
-// If API_KEY is set in the environment, the /api/leads* endpoints
-// endpoints require a matching x-api-key header (or ?key=). If API_KEY is NOT
-// set, the gate is open so nothing breaks by default.
-// Note: this is demonstration-grade. Production would use proper auth
-// (JWT/OAuth) with secrets kept server-side, not a shared key.
+// ── LIGHTWEIGHT API GATE ──[cite: 2]
 const requireApiKey = (req, res, next) => {
   const configured = process.env.API_KEY;
-  if (!configured) return next(); // gate disabled
+  if (!configured) return next();
   const provided = req.header("x-api-key") || req.query.key;
   if (provided && provided === configured) return next();
   return res.status(401).json({ message: "Unauthorized: missing or invalid API key." });
 };
 
-// ── DASHBOARD API — all leads ──
+// ── DASHBOARD API — all leads ──[cite: 2]
 app.get("/api/leads", requireApiKey, (req, res) => {
   db.query("SELECT * FROM attendees ORDER BY created_at DESC", (err, results) => {
     if (err) {
       console.error("❌ /api/leads MySQL error:", err.message);
-      return res.status(503).json({ error: "Database unavailable. Please try again shortly." });
+      return res.status(503).json({ error: "Database unavailable." });
     }
-    console.log(`📊 Dashboard loaded ${results.length} leads from MySQL.`);
     res.json(results);
   });
 });
 
-// ── TEAM API — filtered leads by assigned team ──
+// ── TEAM API — filtered leads by assigned team ──[cite: 2]
 app.get("/api/leads/team/:teamName", requireApiKey, (req, res) => {
   const teamName = decodeURIComponent(req.params.teamName);
   db.query(
     "SELECT * FROM attendees WHERE assigned_team = ? ORDER BY created_at DESC",
     [teamName],
     (err, results) => {
-      if (err) {
-        console.error("❌ /api/leads/team MySQL error:", err.message);
-        return res.status(503).json({ error: "Database unavailable. Please try again shortly." });
-      }
-      console.log(`📨 Team '${teamName}' loaded ${results.length} leads.`);
+      if (err) return res.status(503).json({ error: "Database error" });
       res.json(results);
     }
   );
 });
 
-// ── LEAD PRIORITISATION (transparent, rule-based — no AI in the maths) ──
-// Every point here is auditable. We keep AI for language (recommendations),
-// and keep scoring deterministic so it can be defended in Q&A.
+// ── LEAD PRIORITISATION (Deterministic Rule-Based) ──[cite: 2]
 const computeLeadScore = (attendee) => {
   let score = 0;
   const breakdown = {};
 
-  // ── FACTOR 1: Company size (50 pts max) ──
-  // Larger organisations represent larger potential deal value for Dell.
-  // Thresholds align with Dell's own SMB / mid-market / enterprise segmentation.
   const size = parseInt(attendee.companySize) || 0;
-  let sizePts = 0;
-  if      (size >= 1000) sizePts = 50;  // Enterprise
-  else if (size >= 200)  sizePts = 30;  // Mid-market
-  else if (size >= 50)   sizePts = 15;  // Small business
-  else                   sizePts = 5;   // Micro / startup
+  let sizePts = size >= 1000 ? 50 : size >= 200 ? 30 : size >= 50 ? 15 : 5;
   breakdown.companySize = sizePts;
   score += sizePts;
 
-  // ── FACTOR 2: Job title seniority (30 pts max) ──
-  // Decision-maker titles mean the lead can approve a purchase directly.
-  // Uses keyword matching on free-text field — no enumeration needed.
   const title = (attendee.jobTitle || "").toLowerCase();
-  let titlePts = 0;
-  if (/ceo|cto|cio|cfo|president|owner|founder|managing director|md/.test(title)) {
-    titlePts = 30;   // C-suite / owner — final decision maker
-  } else if (/vp|vice president|director|head of|chief/.test(title)) {
-    titlePts = 20;   // Senior influencer — strong input on purchase
-  } else if (/manager|lead|senior|principal|architect/.test(title)) {
-    titlePts = 10;   // Mid-level — evaluator, not final approver
-  }
+  let titlePts = /ceo|cto|cio|cfo|president|owner|founder|managing director|md/.test(title) ? 30
+               : /vp|vice president|director|head of|chief/.test(title) ? 20
+               : /manager|lead|senior|principal|architect/.test(title) ? 10 : 0;
   breakdown.jobTitle = titlePts;
   score += titlePts;
 
-  // ── FACTOR 3: Current challenge captured (20 pts) ──
-  // If a rep took the time to note the attendee's challenge, it means a real
-  // conversation happened — that is a warmer lead than a badge scan alone.
   const challengePts = (attendee.currentChallenge && attendee.currentChallenge.trim()) ? 20 : 0;
   breakdown.currentChallenge = challengePts;
   score += challengePts;
 
   score = Math.min(score, 100);
-
-  // Priority thresholds — calibrated so a mid-market Director with a challenge
-  // recorded hits HOT, while a micro-business with no context stays COLD.
-  let priority = "COLD";
-  if      (score >= 60) priority = "HOT";
-  else if (score >= 35) priority = "WARM";
-
-  return { lead_score: score, priority, score_breakdown: breakdown };
+  return { lead_score: score, priority: score >= 60 ? "HOT" : score >= 35 ? "WARM" : "COLD", score_breakdown: breakdown };
 };
 
-
-
-
-
-// ── CSV EXPORT — replaces the agency's post-event consolidated list ──
-// Converts rows to safe CSV (quotes, commas, newlines escaped) and serves
-// it as a download. Optional ?team= query param filters to one team.
-// and API gate as the other data routes.
+// ── CSV EXPORT ──[cite: 2]
 const toCsv = (rows) => {
   const cols = ["name", "company", "companySize", "jobTitle", "email",
                 "phone", "interest", "currentChallenge", "pdpaConsent",
@@ -413,55 +415,37 @@ const toCsv = (rows) => {
 app.get("/api/export", requireApiKey, (req, res) => {
   const team = req.query.team ? decodeURIComponent(req.query.team) : null;
   db.query("SELECT * FROM attendees ORDER BY created_at DESC", (err, results) => {
-    if (err) {
-      console.error("❌ Export MySQL error:", err.message);
-      return res.status(503).json({ error: "Database unavailable." });
-    }
+    if (err) return res.status(503).json({ error: "Database unavailable." });
     const rows = team ? results.filter(r => r.assigned_team === team) : results;
-    const csv = toCsv(rows);
-    const stamp = new Date().toISOString().slice(0, 10);
-    const fname = team
-      ? `dell-leads-${team.replace(/[^a-z0-9]/gi, "_")}-${stamp}.csv`
-      : `dell-leads-all-${stamp}.csv`;
     res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", `attachment; filename="${fname}"`);
-    console.log(`⬇️  Exported ${rows.length} leads as CSV.`);
-    res.send(csv);
+    res.setHeader("Content-Disposition", `attachment; filename="dell-leads.csv"`);
+    res.send(toCsv(rows));
   });
 });
 
-// ── LEAD LIFECYCLE UPDATE — rep can update status/notes after the event ──
+// ── LEAD LIFECYCLE UPDATE ──[cite: 2]
 app.patch("/api/leads/:id", requireApiKey, (req, res) => {
   const token = req.params.id;
   const allowed = ["routing_status", "action_recommendation", "followup_note"];
   const updates = {};
   allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
 
-  if (Object.keys(updates).length === 0) {
-    return res.status(400).json({ message: "No valid fields to update." });
-  }
+  if (Object.keys(updates).length === 0) return res.status(400).json({ message: "No fields to update." });
 
-  // Update MySQL
   const setClauses = Object.keys(updates).map(k => `${k} = ?`).join(", ");
   const vals = [...Object.values(updates), token];
   db.query(`UPDATE attendees SET ${setClauses} WHERE token = ?`, vals, (err) => {
-    if (err) {
-      console.error("❌ MySQL lifecycle update failed:", err.message);
-      return res.status(503).json({ message: "Database update failed." });
-    }
-    console.log(`✅ Lead ${token} updated: ${JSON.stringify(updates)}`);
+    if (err) return res.status(503).json({ message: "Database update failed." });
     res.json({ message: "Lead updated.", token, updates });
   });
 });
 
-// ── FOLLOW-UP LOG — record that a follow-up action was taken ──
+// ── FOLLOW-UP LOG ──[cite: 2]
 app.post("/api/leads/:id/followup", requireApiKey, (req, res) => {
   const token = req.params.id;
   const { action_taken, notes, rep_name } = req.body;
 
-  if (!action_taken) {
-    return res.status(400).json({ message: "action_taken is required." });
-  }
+  if (!action_taken) return res.status(400).json({ message: "action_taken is required." });
 
   const logEntry = {
     token,
@@ -471,64 +455,18 @@ app.post("/api/leads/:id/followup", requireApiKey, (req, res) => {
     logged_at: new Date().toLocaleString()
   };
 
-  console.log(`📝 Follow-up logged for lead ${token}:`, logEntry);
-
-  // Update MySQL
   const note = `[${logEntry.logged_at}] ${action_taken} by ${rep_name || "Unknown"}. ${notes || ""}`;
   db.query(
     "UPDATE attendees SET followup_note = ?, routing_status = 'FOLLOWED_UP' WHERE token = ?",
     [note, token],
     (err) => {
-      if (err) {
-        console.error("❌ MySQL follow-up update failed:", err.message);
-        return res.status(503).json({ message: "Database update failed." });
-      }
+      if (err) return res.status(503).json({ message: "Database update failed." });
       res.json({ message: "Follow-up logged successfully.", log: logEntry });
     }
   );
 });
 
-// ── DELIVERY WEBHOOK — future CRM/Salesforce integration endpoint ──
-// Receives outbound delivery confirmations from downstream systems.
-// Verifies HMAC signature (if WEBHOOK_SECRET is set) for security.
-app.post("/api/webhook/delivery", (req, res) => {
-  const secret = process.env.WEBHOOK_SECRET;
-
-  if (secret) {
-    const crypto = require("crypto");
-    const sig = req.header("x-webhook-signature") || "";
-    const expected = crypto
-      .createHmac("sha256", secret)
-      .update(JSON.stringify(req.body))
-      .digest("hex");
-    if (sig !== expected) {
-      console.warn("⚠️ Webhook signature mismatch — rejected.");
-      return res.status(401).json({ message: "Invalid webhook signature." });
-    }
-  }
-
-  const { event, lead_id, crm_id, status, timestamp } = req.body;
-  console.log(`🔔 Webhook received: event=${event}, lead=${lead_id}, status=${status}`);
-
-  if (lead_id && status) {
-    const note = `CRM delivery: ${event || "update"} → ${status} at ${timestamp || new Date().toISOString()}`;
-    if (crm_id) {
-      db.query(
-        "UPDATE attendees SET routing_status = ?, followup_note = ? WHERE token = ?",
-        [status, note, lead_id],
-        (err) => {
-          if (err) console.error("❌ Webhook MySQL update failed:", err.message);
-          else console.log(`✅ Webhook updated lead ${lead_id} to status ${status}`);
-        }
-      );
-
-    }
-  }
-
-  res.json({ message: "Webhook received.", received: req.body });
-});
-
-// ── HEALTH CHECK — for Docker healthcheck and cloud-native monitoring ──
+// ── HEALTH CHECK — for Docker healthcheck and cloud-native monitoring ── Alicia
 app.get("/api/health", (req, res) => {
   db.query("SELECT 1", (err) => {
     if (err) {
