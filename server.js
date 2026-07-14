@@ -1,5 +1,4 @@
 // backend server setup - Alicia
-// backend server setup - Alicia
 const mysql = require("mysql2");
 const express = require("express");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
@@ -12,13 +11,13 @@ const PORT = 3000;
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 //Database Connection & Table Initialization -Alicia
-//Database Connection & Table Initialization -Alicia
 const dbConfig = {
   host: process.env.DB_HOST || "localhost",
   user: process.env.DB_USER || "root",
   password: process.env.DB_PASSWORD || "Password123!",
   database: process.env.DB_NAME || "dell_nfc_system",
-  connectTimeout: 10000
+  connectTimeout: 10000,
+  charset: "utf8mb4",
 };
 
 let db;
@@ -52,11 +51,11 @@ const handleDisconnect = () => {
           routing_status VARCHAR(50) DEFAULT 'ROUTED_AUTOMATICALLY',
           followup_note TEXT,
           visitCount INT DEFAULT 1,
-          visitCount INT DEFAULT 1,
+          buying_intent VARCHAR(255) DEFAULT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           INDEX idx_assigned_team (assigned_team),
           INDEX idx_token (token)
-        )
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `;
       db.query(createTable, (err) => {
         if (err) console.error("❌ Table creation error:", err.message);
@@ -83,7 +82,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(__dirname));
 
 // ── TEAM ROUTING — maps interest area to Dell team ─ Alicia
-// ── TEAM ROUTING — maps interest area to Dell team ─ Alicia
 const getTeamRoute = (interest) => {
   const teamRoutes = {
     "AI PCs": "Client Solutions Group (CSG)",
@@ -94,20 +92,20 @@ const getTeamRoute = (interest) => {
   return teamRoutes[interest] || "Client Solutions Group (CSG)";
 };
 
-// ── AI-POWERED RECOMMENDATION ENGINE ── - WT
+// ── PURE AI SCORING & MULTI-FEATURE ENRICHMENT ENGINE ──
 const analyzeLead = async (attendee) => {
-
-  // Step 1: Rule-based routing — assign Dell team based on interest[cite: 2]
   const assigned_team = getTeamRoute(attendee.interest);
 
-  // Step 2: Determine company size tier for smarter recommendations[cite: 2]
   let companyTier = "small business";
   if (attendee.companySize >= 1000) companyTier = "large enterprise";
   else if (attendee.companySize >= 200) companyTier = "mid-market company";
 
-  // Step 3: Build Gemini prompt[cite: 2]
   const challengeLine = attendee.currentChallenge
-    ? `- Current Challenge: ${attendee.currentChallenge}`
+    ? `- Stated Challenge/Interest Details: ${attendee.currentChallenge}`
+    : "";
+
+  const visitLine = attendee.visitCount && attendee.visitCount > 1
+    ? `- Total Booth Visits: ${attendee.visitCount} (This is a repeat visitor interacting with multiple items across our showcase)`
     : "";
 
   const prompt = `
@@ -122,6 +120,7 @@ Their profile:
 - Interest Area: ${attendee.interest}
 - Assigned Dell Team: ${assigned_team}
 ${challengeLine}
+${visitLine}
 
 Dell product context by interest area:
 - AI PCs: Dell Latitude series with Intel Core Ultra, Dell Optimizer AI software, Dell Precision workstations
@@ -133,25 +132,36 @@ Based on this profile, generate exactly FIVE components separated verbatim by th
 
 Component 1: Give ONE specific, actionable internal follow-up recommendation that the ${assigned_team} team should take within 48 hours after the event. Keep it as a single sentence.
 |||EMAIL_SPLIT|||
-Component 2: Write a personalized, highly professional client outreach follow-up email from Dell Technologies addressed to ${attendee.name}. Reference their job title, company size tier, and address their stated IT challenge directly if provided. Keep the tone warm, consultative, and focused on scheduling a brief follow-up call. Do not use generic placeholders.
+Component 2: Write a highly authentic, professional B2B client outreach follow-up email from Dell Technologies addressed to ${attendee.name}. 
+Follow this strict structure:
+- Opening: Thank them for stopping by the Dell booth at the Dell Technologies Forum Singapore.
+- Contextual Value: Directly reference their interest in ${attendee.interest} solutions. Weave in specific relevant Dell infrastructure phrasing (e.g., if AI PCs, mention leveraging Latitude or Precision workstations powered by Intel Core Ultra processors; if Storage, mention optimizing data workloads with Dell PowerStore; if Cloud, mention scaling multi-cloud flexibility via the Dell APEX ecosystem).
+- Stated Pain Point: If a challenge/interest detail is present, add a consultative sentence addressing it directly (e.g., "You mentioned that you are currently ${attendee.currentChallenge}, which is a core focus area for our engineering teams right now").
+- Call to Action: Invite them to a brief 10-minute introductory discovery sync or a virtual workshop session to explore alignment.
+- Formatting: Maintain clean, spaced professional paragraphs. Do not use generic brackets or placeholders. Conclude with a corporate signature placeholder like "Best regards,\n\n[Your Name]\nAccount Executive\nDell Technologies".
 |||INDUSTRY_SPLIT|||
 Component 3: Infer the single most accurate Industry Vertical for this company (e.g., Financial Services, Healthcare, E-commerce, Government, Manufacturing, Logistics). 
-CRITICAL RULE: If the company name is a keyboard smash (e.g., "asdfghjkl", "qwerty"), unrecognizable text, random letters, or lacks semantic context to confidently infer a real sector, you MUST output exactly "NIL (Unclassified)". Do not default to Technology.
+CRITICAL RULE: If the company name is a keyboard smash (e.g., "asdfghjkl", "qwerty", "g"), unrecognizable text, random letters, or lacks semantic context to confidently infer a real sector, you MUST output exactly "NIL (Unclassified)". Do not default to Technology.
 |||SEGMENT_SPLIT|||
 Component 4: Map the company to one of Dell's account structures based on employee size: If size >= 1000 output "Enterprise Division", if size >= 200 output "Corporate Mid-Market", else output "Commercial Small & Medium Business". Output only the segment name.
 |||INTENT_SPLIT|||
-Component 5: Evaluate the semantic intent of the "Current Challenge" text field and output exactly one of these labels based on urgency:
-- If a serious infrastructure issue, bottleneck, or urgent problem is written, output: "Critical (Active Project)"
-- If general evaluation, comparison, or research is written, output: "Evaluation (Exploring Solutions)"
-- If the field is empty, generic, or just conversational text, output: "Information Gathering"
+Component 5: Evaluate the semantic intent of the "Stated Challenge/Interest Details" text field and output exactly one of these labels based on urgency:
+- If a serious infrastructure issue, bottleneck, or urgent operational problem is written, output: "Critical (Active Project)"
+- If the text shows active procurement, comparison of hardware, shortlisting vendors, or reviewing concrete specifications, output: "Evaluation (Exploring Solutions)"
+- If the text is empty, generic, or represents passive, casual, early-stage brainstorming (e.g., "thinking of getting", "just looking around", "maybe looking in future"), output: "Information Gathering"
+|||SCORE_SPLIT|||
+Component 6: Calculate a final mathematical lead prioritization score as a whole integer from 0 to 100 based on these criteria:
+- Sizing Fit: Award 50 points if enterprise scale (>=1000 employees), 30 points if mid-market (200-999), 15 points if SMB (50-199), else 5 points.
+- Persona Fit: Professionally evaluate their Job Title authority. High-level corporate decision makers (C-Suite, VPs, Directors, Business Owners) get 30 points. Operational managers or technical leads get 15 points. General staff or individual contributors get 0 points.
+- Intent Fit: If their intent urgency context maps to Critical or Evaluation, award an extra 20 points. If they are just information gathering, award 0 points.
+Output ONLY the raw integer value.
 
 Rules:
 - Do NOT use markdown code blocks or formatting labels.
-- Output only the requested components separated strictly by the specified strings: "|||EMAIL_SPLIT|||", "|||INDUSTRY_SPLIT|||", "|||SEGMENT_SPLIT|||", and "|||INTENT_SPLIT|||".
+- Output only the requested components separated strictly by the specified strings: "|||EMAIL_SPLIT|||", "|||INDUSTRY_SPLIT|||", "|||SEGMENT_SPLIT|||", "|||INTENT_SPLIT|||", and "|||SCORE_SPLIT|||".
 `;
 
   try {
-    // Step 4: Call Gemini 2.5 Flash[cite: 2]
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
     const recommendation = result.response.text().trim();
@@ -169,20 +179,20 @@ Rules:
   } catch (err) {
     console.error("❌ Gemini API error:", err.message);
 
-    // Fallback if Gemini fails — matching the 5-component layout structure perfectly[cite: 2]
     const determinedSegment = attendee.companySize >= 1000 ? "Enterprise Division" : attendee.companySize >= 200 ? "Corporate Mid-Market" : "Commercial Small & Medium Business";
     const defaultIntent = attendee.currentChallenge ? "Evaluation (Exploring Solutions)" : "Information Gathering";
+    const baselineScore = attendee.companySize >= 1000 ? 50 : attendee.companySize >= 200 ? 30 : 15;
 
     return {
       ...attendee,
       assigned_team,
-      action_recommendation: `Follow up regarding ${attendee.interest} solutions. |||EMAIL_SPLIT|||Dear ${attendee.name},\n\nThank you for connecting with us at the Dell Technologies Forum. We look forward to discussing our ${attendee.interest} solutions with you soon. |||INDUSTRY_SPLIT|||NIL (Unclassified) |||SEGMENT_SPLIT|||${determinedSegment} |||INTENT_SPLIT|||${defaultIntent}`,
+      action_recommendation: `Follow up regarding ${attendee.interest} solutions. |||EMAIL_SPLIT|||Dear ${attendee.name},\n\nThank you for connecting with us at the Dell Technologies Forum. We look forward to discussing our ${attendee.interest} solutions with you soon. |||INDUSTRY_SPLIT|||NIL (Unclassified) |||SEGMENT_SPLIT|||${determinedSegment} |||INTENT_SPLIT|||${defaultIntent} |||SCORE_SPLIT|||${baselineScore}`,
       processed_at: new Date().toLocaleString()
     };
   }
 };
 
-// ── ROUTES ──[cite: 2]
+// ── ENDPOINTS ──
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/attendee.html");
 });
@@ -217,18 +227,11 @@ app.post("/register", async (req, res) => {
   // Registrations for different interests are treated as separate valid leads.
   console.log("Checking duplicate...");
 
-  // ── DUPLICATE LEAD CONSOLIDATION (MySQL) ─ Alicia
-  // If the same attendee registers again for the same interest,
-  // update their existing record and increment the visit count.
-  // Registrations for different interests are treated as separate valid leads.
-  console.log("Checking duplicate...");
-
   if (email) {
     const dupCheck = await new Promise((resolve) => {
       db.query(
-        "SELECT token, name, visitCount, visitCount FROM attendees WHERE email = ? AND interest = ? LIMIT 1",
+        "SELECT token, name, visitCount FROM attendees WHERE email = ? AND interest = ? LIMIT 1",
         [email, interest],
-        (err, rows) => resolve(err ? null : rows)
         (err, rows) => resolve(err ? null : rows)
       );
     });
@@ -236,44 +239,6 @@ app.post("/register", async (req, res) => {
 
     if (dupCheck && dupCheck.length > 0) {
       const existing = dupCheck[0];
-
-      db.query(
-        `UPDATE attendees
-       SET
-         company = ?,
-         companySize = ?,
-         jobTitle = ?,
-         phone = ?,
-         currentChallenge = ?,
-         visitCount = visitCount + 1
-       WHERE token = ?`,
-        [
-          company,
-          parseInt(req.body.companySize) || 0,
-          (req.body.jobTitle || "").trim(),
-          (req.body.phone || "").trim(),
-          (req.body.currentChallenge || "").trim(),
-          existing.token
-        ],
-        (err) => {
-          if (err) {
-            console.error("❌ Duplicate update failed:", err.message);
-            return res.status(500).json({
-              message: "Failed to update existing attendee."
-            });
-          }
-
-          console.log(`🔄 Existing attendee updated: ${existing.name}`);
-
-          return res.json({
-            duplicate: true,
-            message: `Welcome back ${existing.name}! Your previous registration has been updated.`,
-            visitCount: (existing.visitCount || 1) + 1
-          });
-        }
-      );
-
-      return;
 
       db.query(
         `UPDATE attendees
@@ -333,37 +298,30 @@ app.post("/register", async (req, res) => {
 
   // ── INSERT TO MySQL ─ Alicia
   console.log("About to INSERT");
-  // ── INSERT TO MySQL ─ Alicia
-  console.log("About to INSERT");
   const query = `
     INSERT INTO attendees
-    (token, name, company, companySize, jobTitle, email, phone, interest, currentChallenge, pdpaConsent, assigned_team, action_recommendation, visitCount, visitCount)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (token, name, company, companySize, jobTitle,
+ email, phone, interest, currentChallenge,
+ pdpaConsent, assigned_team,
+ action_recommendation, visitCount)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
-  const values = [
-    rawAttendee.id,
-   
-    rawAttendee.name,
-   
-    rawAttendee.company,
-    rawAttendee.companySize,
-   
-    rawAttendee.jobTitle,
-   
-    rawAttendee.email,
-    rawAttendee.phone,
-   
-    rawAttendee.interest,
-   
-    rawAttendee.currentChallenge,
-    1,
-   
-    rawAttendee.assigned_team,
-   
-    rawAttendee.action_recommendation,
-    1,
-    1
-  ];
+  const values = 
+  [
+  rawAttendee.id,
+  rawAttendee.name,
+  rawAttendee.company,
+  rawAttendee.companySize,
+  rawAttendee.jobTitle,
+  rawAttendee.email,
+  rawAttendee.phone,
+  rawAttendee.interest,
+  rawAttendee.currentChallenge,
+  1,
+  rawAttendee.assigned_team,
+  rawAttendee.action_recommendation,
+  1
+];
 
   db.query(query, values, (err) => {
     if (err) {
@@ -380,7 +338,7 @@ app.post("/register", async (req, res) => {
 });
 
 
-// ── BACKGROUND AI ENRICHMENT ──[cite: 2]
+// ── BACKGROUND AI ENRICHMENT ──WT
 const enrichLeadWithAI = async (attendee) => {
   try {
     const enriched = await analyzeLead(attendee);
@@ -459,36 +417,28 @@ app.get("/api/leads/team/:teamName", requireApiKey, (req, res) => {
   );
 });
 
-// ── LEAD PRIORITISATION (Deterministic Rule-Based) ──[cite: 2]
+// Extract Score Directly From AI Structure for Clean CSV Generation
 const computeLeadScore = (attendee) => {
-  let score = 0;
-  const breakdown = {};
+  const rawText = attendee.action_recommendation || "";
+  let finalScore = 0;
 
-  const size = parseInt(attendee.companySize) || 0;
-  let sizePts = size >= 1000 ? 50 : size >= 200 ? 30 : size >= 50 ? 15 : 5;
-  breakdown.companySize = sizePts;
-  score += sizePts;
+  if (rawText.includes("|||SCORE_SPLIT|||")) {
+    const parts = rawText.split("|||SCORE_SPLIT|||");
+    finalScore = parseInt(parts[1].trim()) || 0;
+  } else {
+    finalScore = attendee.companySize >= 1000 ? 50 : attendee.companySize >= 200 ? 30 : 15;
+  }
 
-  const title = (attendee.jobTitle || "").toLowerCase();
-  let titlePts = /ceo|cto|cio|cfo|president|owner|founder|managing director|md/.test(title) ? 30
-    : /vp|vice president|director|head of|chief/.test(title) ? 20
-      : /manager|lead|senior|principal|architect/.test(title) ? 10 : 0;
-  breakdown.jobTitle = titlePts;
-  score += titlePts;
-
-  const challengePts = (attendee.currentChallenge && attendee.currentChallenge.trim()) ? 20 : 0;
-  breakdown.currentChallenge = challengePts;
-  score += challengePts;
-
-  score = Math.min(score, 100);
-  return { lead_score: score, priority: score >= 60 ? "HOT" : score >= 35 ? "WARM" : "COLD", score_breakdown: breakdown };
+  return {
+    lead_score: finalScore,
+    priority: finalScore >= 60 ? "HOT" : finalScore >= 35 ? "WARM" : "COLD"
+  };
 };
 
-// ── CSV EXPORT ──[cite: 2]
 const toCsv = (rows) => {
   const cols = ["name", "company", "companySize", "jobTitle", "email",
     "phone", "interest", "currentChallenge", "pdpaConsent",
-    "assigned_team", "lead_score", "priority",
+                "assigned_team", "lead_score", "priority", "visitCount",
     "routing_status", "followup_note",
     "action_recommendation", "processed_at"];
   const esc = (v) => {
@@ -514,7 +464,6 @@ app.get("/api/export", requireApiKey, (req, res) => {
   });
 });
 
-// ── LEAD LIFECYCLE UPDATE ──[cite: 2]
 app.patch("/api/leads/:id", requireApiKey, (req, res) => {
   const token = req.params.id;
   const allowed = ["routing_status", "action_recommendation", "followup_note"];
@@ -531,7 +480,6 @@ app.patch("/api/leads/:id", requireApiKey, (req, res) => {
   });
 });
 
-// ── FOLLOW-UP LOG ──[cite: 2]
 app.post("/api/leads/:id/followup", requireApiKey, (req, res) => {
   const token = req.params.id;
   const { action_taken, notes, rep_name } = req.body;
@@ -546,7 +494,7 @@ app.post("/api/leads/:id/followup", requireApiKey, (req, res) => {
     logged_at: new Date().toLocaleString()
   };
 
-  const note = `[${logEntry.logged_at}] ${action_taken} by ${rep_name || "Unknown"}. ${notes || ""}`;
+  const note = `[${logEntry.logged_at}] ${action_taken} by ${rep_name}. ${notes}`;
   db.query(
     "UPDATE attendees SET followup_note = ?, routing_status = 'FOLLOWED_UP' WHERE token = ?",
     [note, token],
