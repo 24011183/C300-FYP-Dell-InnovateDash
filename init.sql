@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS attendees (
     routing_status VARCHAR(50) DEFAULT 'ROUTED_AUTOMATICALLY',
     followup_note TEXT,
     visitCount INT DEFAULT 1,
+    buying_intent VARCHAR(255) DEFAULT NULL, 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_assigned_team (assigned_team),
     INDEX idx_token (token)
-);
+);ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

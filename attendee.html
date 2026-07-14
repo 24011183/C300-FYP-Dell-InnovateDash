@@ -3,321 +3,286 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QuickTap Connect — Lead Registration</title>
+  <title>Dell QuickTap Connect — Booth Registration</title>
   <style>
-    /* Dell Dashboard Brand Standards Theme */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
       font-family: 'Segoe UI', Arial, sans-serif;
-      background-color: #0b111e; /* Core Dark Slate Dashboard background */
-      background-image: linear-gradient(180deg, #0b111e 0%, #070a12 100%);
+      background-color: #0b111e;
       color: #e2e8f0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
       min-height: 100vh;
-      margin: 0;
-      padding: 20px;
-      box-sizing: border-box;
-    }
-
-    .form-container {
-      background-color: #111827;
-      border: 1px solid #1f2937;
-      border-radius: 8px;
-      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
-      width: 100%;
-      max-width: 460px;
-      overflow: hidden; /* Keeps brand bar corner radius aligned */
-    }
-
-    /* Official Dell Tech Top Header Bar */
-    .dell-brand-bar {
-      background-color: #0076ce; /* Official Dell Blue */
-      padding: 15px 25px;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: space-between;
-      border-bottom: 2px solid #005da3;
+      justify-content: center;
+      padding: 20px;
     }
 
-    .dell-logo-text {
-      font-size: 18px;
-      font-weight: 700;
-      color: #ffffff;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
+    .form-card {
+      background: #111827;
+      border: 1px solid #1f2937;
+      border-top: 4px solid #0076ce;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 480px;
+      padding: 30px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
     }
 
-    .system-status {
-      font-size: 11px;
-      color: #93c5fd;
-      background-color: rgba(255, 255, 255, 0.1);
-      padding: 4px 10px;
-      border-radius: 20px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .form-content {
-      padding: 35px 30px;
-    }
-
-    .form-header-desc {
-      font-size: 14px;
-      color: #9ca3af;
-      margin-top: -5px;
-      margin-bottom: 25px;
+    .brand-header {
       text-align: center;
+      margin-bottom: 25px;
+    }
+    .brand-header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .brand-header p {
+      font-size: 13px;
+      color: #93c5fd;
+      margin-top: 4px;
     }
 
     .form-group {
-      margin-bottom: 22px;
+      margin-bottom: 18px;
+    }
+    
+    .form-group.row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
     }
 
     label {
       display: block;
-      font-size: 13px;
-      font-weight: 600;
-      margin-bottom: 8px;
+      font-size: 12px;
       color: #9ca3af;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      margin-bottom: 6px;
+      font-weight: 600;
     }
 
-    input, select {
+    input[type="text"],
+    input[type="email"],
+    input[type="number"],
+    select,
+    textarea {
       width: 100%;
-      padding: 12px 16px;
-      background-color: #1f2937;
+      background: #1f2937;
       border: 1px solid #374151;
-      border-radius: 4px;
       color: #fff;
-      font-size: 15px;
-      transition: all 0.2s ease;
-      box-sizing: border-box;
+      padding: 10px 14px;
+      border-radius: 4px;
+      font-size: 14px;
+      font-family: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
-
-    input:focus, select:focus {
+    input:focus, select:focus, textarea:focus {
       outline: none;
       border-color: #0076ce;
-      box-shadow: 0 0 0 3px rgba(0, 118, 206, 0.25);
+      box-shadow: 0 0 0 3px rgba(0, 118, 206, 0.2);
     }
 
-    input::placeholder {
-      color: #4b5563;
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+      line-height: 1.5;
     }
 
-    /* Custom drop down arrow layout overrides */
-    select {
+    .checkbox-group {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 20px 0;
+      background: rgba(31, 41, 55, 0.4);
+      padding: 12px;
+      border-radius: 4px;
+      border: 1px solid #1f2937;
+    }
+    .checkbox-group input {
+      margin-top: 3px;
       cursor: pointer;
     }
+    .checkbox-group label {
+      text-transform: none;
+      font-size: 12px;
+      color: #cbd5e1;
+      line-height: 1.5;
+      cursor: pointer;
+      user-select: none;
+    }
 
-    button {
+    .submit-btn {
       width: 100%;
-      padding: 15px;
-      background-color: #0076ce;
+      background: #0076ce;
+      color: #fff;
       border: none;
+      padding: 12px;
       border-radius: 4px;
-      color: white;
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: 0.5px;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: background 0.2s;
+    }
+    .submit-btn:hover {
+      background: #005da3;
+    }
+    .submit-btn:disabled {
+      background: #4b5563;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .message-box {
       margin-top: 15px;
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      display: none;
+      line-height: 1.4;
     }
-
-    button:hover {
-      background-color: #005da3;
-      box-shadow: 0 4px 12px rgba(0, 118, 206, 0.3);
+    .message-box.success {
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      color: #4ade80;
     }
-
-    button:active {
-      transform: translateY(1px);
+    .message-box.error {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #f87171;
     }
   </style>
 </head>
 <body>
 
-  <div class="form-container">
-    <div class="dell-brand-bar">
-      <div class="dell-logo-text">DELL</div>
-      <div class="system-status">QuickTap Connect</div>
+<div class="form-card">
+  <div class="brand-header">
+    <h1>Dell Technologies</h1>
+    <p>QuickTap Forum Connect Registration</p>
     </div>
 
-    <div class="form-content">
-      <p class="form-header-desc">Register your interest to connect with the right Dell team</p>
+  <form id="regForm" onsubmit="submitRegistration(event)">
 
-      <form id="registerForm">
         <div class="form-group">
-          <label for="name">Full Name</label>
-          <input type="text" id="name" placeholder="John Doe" required>
+      <label for="name">Full Name *</label>
+      <input type="text" id="name" required placeholder="e.g. John Doe">
         </div>
 
         <div class="form-group">
-          <label for="company">Company</label>
-          <input type="text" id="company" placeholder="Dell Technologies" required>
+      <label for="company">Company Name *</label>
+      <input type="text" id="company" required placeholder="e.g. Nexus Solutions Ltd">
         </div>
 
-        <div class="form-group">
-          <label for="companySize">Company Size</label>
-          <input type="number" id="companySize" placeholder="e.g. 500" required>
+    <div class="form-group row">
+      <div>
+        <label for="companySize">Company Size (Emp) *</label>
+        <input type="number" id="companySize" required min="1" placeholder="e.g. 250">
+        </div>
+      <div>
+        <label for="jobTitle">Job Title *</label>
+        <input type="text" id="jobTitle" required placeholder="e.g. IT Director">
+      </div>
         </div>
 
-        <div class="form-group">
-          <label for="jobTitle">Job Title / Role</label>
-          <input type="text" id="jobTitle" placeholder="e.g. Infrastructure Director" required>
-        </div>
-
-        <div class="form-group">
-          <label for="email">Email Address</label>
-          <input type="email" id="email" placeholder="e.g. john@company.com" required>
-        </div>
-
-        <div class="form-group">
+    <div class="form-group row">
+      <div>
+        <label for="email">Work Email *</label>
+        <input type="email" id="email" required placeholder="name@company.com">
+      </div>
+      <div>
           <label for="phone">Phone Number</label>
-          <input type="tel" id="phone" placeholder="e.g. +65 9123 4567" required>
+        <input type="text" id="phone" placeholder="e.g. +65 9123 4567">
+      </div>
         </div>
 
         <div class="form-group">
-          <label for="interest">Strategic Focus Area</label>
+      <label for="interest">Primary Solution Interest *</label>
           <select id="interest" required>
-            <option value="" disabled selected>Select Business Unit</option>
-            <option value="AI PCs">AI PCs (Client Solutions Group)</option>
-            <option value="Storage">Storage (Infrastructure Solutions)</option>
-            <option value="Cloud">Cloud (APEX & Cloud Services)</option>
-            <option value="Consultancy">Consultancy (Professional Services)</option>
+        <option value="" disabled selected>Select an infrastructure focus...</option>
+        <option value="AI PCs">💻 Client Solutions (AI PCs & Workstations)</option>
+        <option value="Storage">🗄️ Infrastructure Solutions (Data & Storage)</option>
+        <option value="Cloud">☁️ APEX Ecosystem (Hybrid & Multicloud Services)</option>
+        <option value="Consultancy">🛠️ Professional Deployment & Consultancy Services</option>
           </select>
         </div>
 
+    <!-- Redesigned Feature 3 Contextual Input Space -->
         <div class="form-group">
-          <label for="currentChallenge">Current IT Challenge (Optional)</label>
-          <input type="text" id="currentChallenge" placeholder="e.g. Managing hybrid cloud costs">
+      <label for="currentChallenge">Current Challenge or Infrastructure Goals (Optional)</label>
+      <textarea id="currentChallenge" placeholder="e.g. Looking to refresh our employee notebook fleet with AI capabilities, upgrade storage arrays, or fix transaction latency issues..."></textarea>
         </div>
 
-        <div class="form-group" style="background:#1a2235;border:1px solid #374151;border-radius:6px;padding:14px 16px;">
-          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px;color:#cbd5e1;font-weight:400;">
-            <input type="checkbox" id="pdpaConsent" required style="width:16px;height:16px;flex-shrink:0;margin-top:2px;accent-color:#0076ce;">
-            <span>
-              I consent to Dell Technologies collecting and processing my personal data for sales follow-up purposes in accordance with Dell's 
-              <a href="https://www.dell.com/en-sg/lp/privacy-center" target="_blank" style="color:#60a5fa;">Privacy Policy</a>.
-              Data will not be shared with third parties and may be deleted upon request.
-            </span>
+    <div class="checkbox-group">
+      <input type="checkbox" id="pdpaConsent" required>
+      <label for="pdpaConsent">
+        I consent to Dell Technologies collecting my data for event follow-up actions and technical scoping communications in accordance with the PDPA guidelines. *
           </label>
         </div>
 
-        <button type="submit">Submit Registration Data</button>
+    <button type="submit" id="submitBtn" class="submit-btn">Register and Connect</button>
       </form>
-    </div>
+
+  <div id="messageBox" class="message-box"></div>
   </div>
 
-  <div id="queueMsg" style="text-align:center;font-size:12px;color:#f59e0b;padding:8px 20px;display:block;"></div>
-
   <script>
-    const QUEUE_KEY = "dell_lead_queue";
-
-    // ── OFFLINE QUEUE HELPERS ──
-    const getQueue = () => JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
-    const saveQueue = (q) => localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
-
-    const tryFlushQueue = async () => {
-      const q = getQueue();
-      if (!q.length) return;
-      const remaining = [];
-      for (const entry of q) {
-        try {
-          const res = await fetch("/register", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(entry)
-          });
-          if (!res.ok) remaining.push(entry);
-          else console.log("📤 Queued lead flushed:", entry.name);
-        } catch {
-          remaining.push(entry);
-        }
-      }
-      saveQueue(remaining);
-      if (remaining.length < q.length) {
-        const msg = document.getElementById("queueMsg");
-        if (msg) msg.textContent = remaining.length
-          ? `⚠️ ${remaining.length} lead(s) still queued offline.`
-          : "✅ All offline leads synced to server.";
-      }
-    };
-
-    // Flush any queued leads when coming back online
-    window.addEventListener("online", () => {
-      console.log("🌐 Back online — flushing offline queue...");
-      tryFlushQueue();
-    });
-
-    // Try flushing on page load too
-    tryFlushQueue();
-
-    const form = document.getElementById("registerForm");
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-
-      const submitBtn = form.querySelector("button[type='submit']");
+  async function submitRegistration(event) {
+    event.preventDefault();
+    
+    const submitBtn = document.getElementById("submitBtn");
+    const msgBox = document.getElementById("messageBox");
+    
       submitBtn.disabled = true;
-      submitBtn.textContent = "Submitting...";
+    msgBox.style.display = "none";
+    msgBox.className = "message-box";
 
-      const pdpaConsent = document.getElementById("pdpaConsent").checked;
-      if (!pdpaConsent) {
-        alert("PDPA consent is required before registration can proceed.");
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Submit Registration Data";
-        return;
-      }
-
-      const attendee = {
-        name: document.getElementById("name").value,
-        company: document.getElementById("company").value,
+    const payload = {
+      name: document.getElementById("name").value.trim(),
+      company: document.getElementById("company").value.trim(),
         companySize: parseInt(document.getElementById("companySize").value) || 0,
-        jobTitle: document.getElementById("jobTitle").value,
-        email: document.getElementById("email").value,
-        phone: document.getElementById("phone").value,
+      jobTitle: document.getElementById("jobTitle").value.trim(),
+      email: document.getElementById("email").value.trim(),
+      phone: document.getElementById("phone").value.trim(),
         interest: document.getElementById("interest").value,
-        currentChallenge: document.getElementById("currentChallenge").value,
-        pdpaConsent: true
+      currentChallenge: document.getElementById("currentChallenge").value.trim(),
+      pdpaConsent: document.getElementById("pdpaConsent").checked
       };
 
       try {
         const response = await fetch("/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(attendee)
+        body: JSON.stringify(payload)
         });
 
         const data = await response.json();
-        if (data.duplicate) {
-          alert(`ℹ️ ${data.message}`);
-        } else {
-          alert("✅ Registration successful! Lead routed to " + (data.lead?.assigned_team || "the relevant team") + ".");
-        }
-        console.log("Transmission Successful:", data);
-        form.reset();
-      } catch (error) {
-        // ── OFFLINE FALLBACK: queue locally and retry when back online ──
-        console.warn("🔴 Server offline — queuing lead locally:", attendee.name);
-        const q = getQueue();
-        attendee._queued_at = new Date().toISOString();
-        q.push(attendee);
-        saveQueue(q);
-        const msg = document.getElementById("queueMsg");
-        if (msg) msg.textContent = `⚠️ Server offline. ${q.length} lead(s) queued locally — will auto-sync when connection is restored.`;
-        alert(`⚠️ Server currently offline.
 
-"${attendee.name}" has been saved locally and will be submitted automatically when the connection is restored.`);
-        form.reset();
+      if (!response.ok) {
+        throw new Error(data.message || "Registration failed.");
+      }
+
+      msgBox.textContent = data.message || "Success! Welcome to the Dell Technologies Forum.";
+      msgBox.classList.add("success");
+      msgBox.style.display = "block";
+      
+      // Clear form inputs on successful capture
+      document.getElementById("regForm").reset();
+
+    } catch (err) {
+      msgBox.textContent = "❌ " + err.message;
+      msgBox.classList.add("error");
+      msgBox.style.display = "block";
       } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = "Submit Registration Data";
       }
-    });
+  }
   </script>
-
 </body>
 </html>
